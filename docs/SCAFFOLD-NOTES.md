@@ -4,6 +4,23 @@ Captured live while hand-scaffolding Howler on 2026-06-23. The point of the firs
 surface Tessera friction; the scaffold itself is the first source. Each item below is a candidate
 to fix in `../tessera` — most distill into the missing `templates/tessera/` scaffold.
 
+## Resolution status (2026-06-24)
+
+Most of this is now fixed back in tessera — `bin/tessera-new-project` + `templates/tessera/`
+(commit `239d668`). Per-item below:
+
+- **Headline (no scaffold), items 1–3** — RESOLVED. CLAUDE.md.template, harness assembler, and a
+  stack-agnostic settings/gitignore base now exist. Scaffold copies hooks from tessera's live
+  source (no third stale copy).
+- **Item 4 (gate recorder vendored vs installed)** — STILL OPEN. Scaffold copies `emit.py` from
+  live source (mitigates drift) but it's still vendored per-project, not an installed CLI. Decision
+  deferred.
+- **Item 5 (app-stack coexistence)** — DOCUMENTED in the scaffold README/script: generate the app
+  with the platform's own tool, layer the harness on top.
+- **Not addressed (deliberately):** the maggy-inherited `templates/` top-level cruft (separate
+  cleanup) and downstream-not-sibling packaging (the scaffold assumes it runs from a tessera
+  checkout). Both flagged for later.
+
 ## The headline: there is no scaffold
 
 Tessera has **no native way to stand up a downstream project.** Every step here was manual. What
