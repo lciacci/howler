@@ -19,6 +19,17 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+                // Oboe's prefab package ships against the shared STL.
+                arguments += "-DANDROID_STL=c++_shared"
+            }
+        }
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     buildTypes {
@@ -34,10 +45,19 @@ android {
     }
     buildFeatures {
         compose = true
+        prefab = true
     }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.31.6"
+        }
+    }
+    ndkVersion = "27.2.12479018"
 }
 
 dependencies {
+    implementation("com.google.oboe:oboe:1.9.0")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

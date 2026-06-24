@@ -2,9 +2,6 @@ package com.example.howler
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.media.AudioManager
-import android.media.MicrophoneInfo
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -15,158 +12,100 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.example.howler.audio.InputRung
-import com.example.howler.audio.MicProbe
-import com.example.howler.audio.OpenAttempt
-import com.example.howler.audio.ProbeResult
-import com.example.howler.audio.confirmedRung
-import com.example.howler.audio.inputRung
-import com.example.howler.audio.runInputProbe
-import com.example.howler.audio.sensitivityVerdict
+import com.example.howler.audio.AudioEngine
 import com.example.howler.ui.theme.HowlerTheme
-
-private const val TAG = "HowlerProbe"
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val device = probeDevice()
-        android.util.Log.i(TAG, device.toString())
         setContent {
             HowlerTheme {
                 val context = LocalContext.current
-                var input by remember { mutableStateOf<List<OpenAttempt>?>(null) }
+                var granted by remember { mutableStateOf(hasMicPermission(context)) }
                 val launcher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
-                ) { granted ->
-                    input = if (granted) runInputProbe()
-                    else listOf(OpenAttempt("(denied)", false, 0, 0, "", 0, "RECORD_AUDIO denied"))
-                    android.util.Log.i(TAG, "inputProbe=$input")
-                }
+                ) { granted = it }
                 LaunchedEffect(Unit) {
-                    val granted = ContextCompat.checkSelfPermission(
-                        context, Manifest.permission.RECORD_AUDIO
-                    ) == PackageManager.PERMISSION_GRANTED
-                    if (granted) {
-                        input = runInputProbe()
-                        android.util.Log.i(TAG, "inputProbe=$input")
-                    } else {
-                        launcher.launch(Manifest.permission.RECORD_AUDIO)
-                    }
+                    if (!granted) launcher.launch(Manifest.permission.RECORD_AUDIO)
                 }
                 Scaffold(modifier = Modifier.fillMaxSize()) { pad ->
-                    ProbeReport(device, input, Modifier.padding(pad))
+                    if (granted) {
+                        MeterScreen(Modifier.padding(pad))
+                    } else {
+                        Centered("Microphone permission required.", Modifier.padding(pad))
+                    }
                 }
             }
         }
     }
-
-    private fun probeDevice(): ProbeResult {
-        val am = getSystemService(AUDIO_SERVICE) as AudioManager
-        val unprocessed = am.getProperty(
-            AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED
-        ).let { it == "true" || it == "1" }
-        val sr = am.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()
-        val fpb = am.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)?.toIntOrNull()
-        return runCatching { am.microphones }.fold(
-            onSuccess = { mics -> result(unprocessed, sr, fpb, mics.map { it.toProbe() }, null) },
-            onFailure = { e -> result(unprocessed, sr, fpb, emptyList(), e.message ?: "$e") },
-        )
-    }
-
-    private fun result(
-        unprocessed: Boolean, sr: Int?, fpb: Int?, mics: List<MicProbe>, err: String?,
-    ) = ProbeResult(
-        device = "${Build.MANUFACTURER} ${Build.MODEL} · API ${Build.VERSION.SDK_INT}",
-        unprocessedSupported = unprocessed,
-        outputSampleRateHz = sr,
-        outputFramesPerBuffer = fpb,
-        microphones = mics,
-        micError = err,
-    )
 }
 
-private fun MicrophoneInfo.toProbe(): MicProbe {
-    val s = sensitivity
-    return MicProbe(
-        description = description.ifBlank { "(no description)" },
-        location = micLocation(location),
-        sensitivityDbFs = if (s == MicrophoneInfo.SENSITIVITY_UNKNOWN) null else s,
-    )
-}
-
-private fun micLocation(loc: Int): String = when (loc) {
-    MicrophoneInfo.LOCATION_MAINBODY -> "main body"
-    MicrophoneInfo.LOCATION_MAINBODY_MOVABLE -> "main body (movable)"
-    MicrophoneInfo.LOCATION_PERIPHERAL -> "peripheral"
-    else -> "unknown"
-}
+private fun hasMicPermission(context: android.content.Context): Boolean =
+    ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+        PackageManager.PERMISSION_GRANTED
 
 @Composable
-private fun ProbeReport(device: ProbeResult, input: List<OpenAttempt>?, modifier: Modifier = Modifier) {
+private fun MeterScreen(modifier: Modifier = Modifier) {
+    var dbfs by remember { mutableFloatStateOf(-160f) }
+    var over by remember { mutableStateOf(false) }
+    var started by remember { mutableStateOf(true) }
+
+    // NOTE: a stream opened while the device is dozing/locked stays silenced for
+    // its lifetime (verified on Pixel 10 Pro XL). TODO: restart on lifecycle
+    // resume so backgrounding then returning yields a fresh, unsilenced stream.
+    DisposableEffect(Unit) {
+        started = AudioEngine.nativeStart()
+        onDispose { AudioEngine.nativeStop() }
+    }
+    LaunchedEffect(started) {
+        while (started) {
+            dbfs = AudioEngine.nativeLevelDbfs()
+            over = AudioEngine.nativeOverRange()
+            delay(50)
+        }
+    }
+
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Howler — STEP ZERO probe", style = MaterialTheme.typography.titleLarge)
-        Text(device.device, style = MaterialTheme.typography.bodySmall)
-        HorizontalDivider()
-        Text("Probe A — UNPROCESSED (authoritative)", style = MaterialTheme.typography.titleMedium)
-        Text("property hint: ${yesNo(device.unprocessedSupported)} → ${rungLabel(inputRung(device.unprocessedSupported))}")
-        InputProbeSection(input)
-        Text("framework: ${device.outputSampleRateHz ?: "?"} Hz · ${device.outputFramesPerBuffer ?: "?"} frames/buf")
-        HorizontalDivider()
-        Text("Probe B — getSensitivity()", style = MaterialTheme.typography.titleMedium)
-        Text(sensitivityVerdict(device.microphones.map { it.sensitivityDbFs }))
-        device.micError?.let { Text("getMicrophones() error: $it") }
-        device.microphones.forEachIndexed { i, m -> MicRow(i, m) }
+        if (!started) {
+            Text("Audio stream failed to open.", textAlign = TextAlign.Center)
+            return@Column
+        }
+        Text(
+            text = if (over) "OVER" else "%.1f".format(dbfs),
+            style = MaterialTheme.typography.displayLarge,
+        )
+        Text("dBFS · uncalibrated (relative)", style = MaterialTheme.typography.bodyMedium)
     }
 }
 
 @Composable
-private fun InputProbeSection(input: List<OpenAttempt>?) {
-    if (input == null) {
-        Text("opening sources… (grant mic permission)")
-        return
-    }
-    Text("CONFIRMED: ${confirmedRung(input)}", style = MaterialTheme.typography.bodyLarge)
-    input.forEach { a ->
-        val detail = if (a.opened) "OPEN · ${a.sampleRate} Hz · ${a.channels}ch · ${a.framesRead} frames"
-        else "FAILED · ${a.error ?: "?"}"
-        Text("• ${a.sourceName}: $detail", style = MaterialTheme.typography.bodyMedium)
-    }
+private fun Centered(text: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) { Text(text, textAlign = TextAlign.Center) }
 }
-
-@Composable
-private fun MicRow(index: Int, m: MicProbe) {
-    val sens = m.sensitivityDbFs?.let { "%.1f dBFS".format(it) } ?: "unpopulated"
-    Text("• [$index] ${m.description} · ${m.location} · $sens",
-        style = MaterialTheme.typography.bodyMedium)
-}
-
-private fun rungLabel(rung: InputRung): String = when (rung) {
-    InputRung.UNPROCESSED -> "UNPROCESSED"
-    InputRung.VOICE_RECOGNITION -> "VOICE_RECOGNITION"
-}
-
-private fun yesNo(b: Boolean): String = if (b) "YES" else "NO"
