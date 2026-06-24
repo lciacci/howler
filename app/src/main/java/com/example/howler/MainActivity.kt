@@ -1,6 +1,7 @@
 package com.example.howler
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -12,9 +13,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +35,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.howler.audio.AudioEngine
+import com.example.howler.audio.Calibration
+import com.example.howler.audio.CalibrationStore
+import com.example.howler.audio.manualOffset
+import com.example.howler.audio.resolveCalibration
+import com.example.howler.audio.splFromDbfs
 import com.example.howler.ui.theme.HowlerTheme
 import kotlinx.coroutines.delay
 
@@ -59,19 +69,24 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun hasMicPermission(context: android.content.Context): Boolean =
+private fun hasMicPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
         PackageManager.PERMISSION_GRANTED
 
 @Composable
 private fun MeterScreen(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val store = remember { CalibrationStore(context) }
     var dbfs by remember { mutableFloatStateOf(-160f) }
     var over by remember { mutableStateOf(false) }
     var started by remember { mutableStateOf(true) }
+    // Tier-1 device sensitivity intentionally not auto-trusted (see Calibration.kt);
+    // resolver uses the stored manual point or stays uncalibrated.
+    var cal by remember { mutableStateOf<Calibration>(resolveCalibration(store.loadManual(), null)) }
+    var showDialog by remember { mutableStateOf(false) }
 
     // NOTE: a stream opened while the device is dozing/locked stays silenced for
-    // its lifetime (verified on Pixel 10 Pro XL). TODO: restart on lifecycle
-    // resume so backgrounding then returning yields a fresh, unsilenced stream.
+    // its lifetime (verified on Pixel 10 Pro XL). TODO: restart on lifecycle resume.
     DisposableEffect(Unit) {
         started = AudioEngine.nativeStart()
         onDispose { AudioEngine.nativeStop() }
@@ -84,21 +99,75 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    val (big, caption) = readout(cal, dbfs, over)
     Column(
         modifier = modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (!started) {
             Text("Audio stream failed to open.", textAlign = TextAlign.Center)
             return@Column
         }
-        Text(
-            text = if (over) "OVER" else "%.1f".format(dbfs),
-            style = MaterialTheme.typography.displayLarge,
-        )
-        Text("dBFS · uncalibrated (relative)", style = MaterialTheme.typography.bodyMedium)
+        Text(big, style = MaterialTheme.typography.displayLarge)
+        Text(caption, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+        Button(onClick = { showDialog = true }) {
+            Text(if (cal is Calibration.Uncalibrated) "Calibrate" else "Recalibrate")
+        }
     }
+
+    if (showDialog) {
+        CalibrateDialog(
+            currentDbfs = dbfs,
+            onSave = { refSpl, meterClass ->
+                val manual = Calibration.Manual(manualOffset(refSpl, dbfs.toDouble()), meterClass)
+                store.saveManual(manual)
+                cal = manual
+                showDialog = false
+            },
+            onClear = { store.clear(); cal = Calibration.Uncalibrated; showDialog = false },
+            onDismiss = { showDialog = false },
+        )
+    }
+}
+
+/** Big readout + caption for the current calibration + measurement. */
+private fun readout(cal: Calibration, dbfs: Float, over: Boolean): Pair<String, String> {
+    if (over) return "OVER" to "over-range — source exceeds full scale, reading invalid"
+    return when (val spl = cal.splFromDbfs(dbfs)) {
+        null -> "%.1f".format(dbfs) to "dBFS · uncalibrated (relative only)"
+        else -> "%.1f".format(spl) to "dB SPL · calibrated, Z-weighted (≈±2 dB at best)"
+    }
+}
+
+@Composable
+private fun CalibrateDialog(
+    currentDbfs: Float,
+    onSave: (referenceSpl: Double, meterClass: String) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var refSplText by remember { mutableStateOf("") }
+    var meterText by remember { mutableStateOf("class-2") }
+    val refSpl = refSplText.toDoubleOrNull()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Manual calibration") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Hold your reference meter at a steady source, then enter its reading.")
+                Text("Phone now: %.1f dBFS".format(currentDbfs))
+                OutlinedTextField(refSplText, { refSplText = it }, label = { Text("Reference dB SPL") })
+                OutlinedTextField(meterText, { meterText = it }, label = { Text("Reference meter class") })
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = refSpl != null, onClick = { onSave(refSpl!!, meterText) }) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onClear) { Text("Clear") }
+        },
+    )
 }
 
 @Composable
