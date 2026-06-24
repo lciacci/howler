@@ -1,0 +1,40 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors / IDE
+.vscode/settings.json
+.idea/
+*.iml
+
+# Tessera runtime
+.tessera/logs/*
+!.tessera/logs/README.md
+.tessera/config.yml
+.mnemos/
+.claude/.tdd-iteration-count
+
+# Android / Gradle
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.keystore
+.cxx/
+captures/
+
+# Native (Oboe / NDK)
+obj/
+.externalNativeBuild/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python (tooling only)
+__pycache__/
+*.pyc
+.venv/
+venv/
