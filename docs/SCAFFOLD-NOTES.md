@@ -17,17 +17,29 @@ Most of this is now fixed back in tessera — `bin/tessera-new-project` + `templ
   deferred.
 - **Item 5 (app-stack coexistence)** — DOCUMENTED in the scaffold README/script: generate the app
   with the platform's own tool, layer the harness on top.
-- **Not addressed (deliberately):** the maggy-inherited `templates/` top-level cruft (separate
-  cleanup) and downstream-not-sibling packaging (the scaffold assumes it runs from a tessera
-  checkout). Both flagged for later.
+- **CORRECTION (2026-06-24) — "maggy cruft" was wrong.** An earlier draft of these notes flagged
+  the inherited `templates/` top-level and `commands/initialize-project.md` as "maggy cruft to
+  clean." That is **false** and is NOT a drift point — do not delete them. Checked against
+  `../tessera/docs/design-principles.md` ("Skills — keep" / "What's Out"): the design doc
+  **intentionally keeps** mnemos, icpg, polyphony, codex-review, etc., and the cut-list skills are
+  **already removed** (commit `e4ae042`). The `templates/` files are the **install payload** for
+  kept subsystems, and `initialize-project.md` is the inherited maggy **installer** (a candidate
+  distribution mechanism), not dead weight.
+- **Real open item — downstream packaging.** Two mechanism candidates compete: (a) the inherited
+  maggy installer (`initialize-project.md` + `templates/` + `~/.claude/.bootstrap-dir`), and
+  (b) `bin/tessera-new-project` (built here, harness-only, assumes a sibling tessera checkout).
+  tess-dashboard (downstream #0) and Howler (#1) were each hand-rolled differently — divergent
+  shapes, no shared mechanism. The scaffold is the convergence point; reconciling it with the
+  inherited installer is the actual decision. Tracked, not a cleanup.
 
 ## The headline: there is no scaffold
 
 Tessera has **no native way to stand up a downstream project.** Every step here was manual. What
 exists in tessera today: `templates/tessera/*.template` (3 `.tessera/` config files only). What's
 missing: a `CLAUDE.md.template`, a `.claude/` harness bundle, and a command to assemble them.
-`commands/initialize-project.md` is inherited Maggy cruft (references `~/.claude/.bootstrap-dir`,
-zero mentions of Tessera) — not usable.
+`commands/initialize-project.md` is the inherited maggy **installer** (reads
+`~/.claude/.bootstrap-dir`, no Tessera-specific wiring) — not usable *as-is* for a sibling-checkout
+scaffold, but it's a candidate distribution mechanism, **not cruft** (see Correction above).
 
 ## Friction items (→ fix in tessera)
 
