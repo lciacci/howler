@@ -8,6 +8,7 @@ Runtime friction surfaced while working in Howler. Framework-level fixes land in
 ## F-001 — `install.md` Mnemos step is Apple-Silicon-fragile (dual-Homebrew shadowing)
 
 **Surfaced:** 2026-06-24, restoring Howler session state on the migrated machine.
+**Resolved:** 2026-06-24 in `../tessera` `6640d19` (one-time authorized cross-repo edit).
 
 **What happened.** This machine has a stale **Intel** Homebrew at `/usr/local` whose `brew`
 sits earlier on `PATH` than the native **arm64** Homebrew at `/opt/homebrew`. Following
