@@ -20,4 +20,7 @@ object AudioEngine {
 
     /** True if the last block hit/exceeded full scale (clipping → reading is low). */
     external fun nativeOverRange(): Boolean
+
+    /** Time-weighting: true = Fast (125 ms), false = Slow (1 s). IEC 61672. */
+    external fun nativeSetFast(fast: Boolean)
 }

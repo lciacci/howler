@@ -97,30 +97,34 @@ class HowlerEngine : public AudioStreamDataCallback {
 public:
     DataCallbackResult onAudioReady(AudioStream *, void *audioData, int32_t numFrames) override {
         auto *samples = static_cast<float *>(audioData);
-        double sumSquares = 0.0;     // Z (flat)
-        double sumSquaresA = 0.0;    // A-weighted
+        // IEC 61672 exponential time-weighting: one-pole smoother on the
+        // mean-square with k = 1 - exp(-1/(fs·τ)). Fast τ=125 ms, Slow τ=1 s.
+        const double k = mFast.load() ? mKFast : mKSlow;
         bool over = false;
         for (int32_t i = 0; i < numFrames; ++i) {
             const float s = samples[i];
-            sumSquares += static_cast<double>(s) * s;
             const double a = mWeightA.process(s);
-            sumSquaresA += a * a;
+            mMsZ += (static_cast<double>(s) * s - mMsZ) * k;
+            mMsA += (a * a - mMsA) * k;
             if (std::fabs(s) >= kOverThreshold) over = true;  // clip detect on raw signal
         }
-        mLevelDbfs.store(rmsToDbfs(sumSquares, numFrames));
-        mLevelDbfsA.store(rmsToDbfs(sumSquaresA, numFrames));
+        mLevelDbfs.store(msToDbfs(mMsZ));
+        mLevelDbfsA.store(msToDbfs(mMsA));
         mOverRange.store(over);
         return DataCallbackResult::Continue;
     }
 
-    static float rmsToDbfs(double sumSquares, int32_t numFrames) {
-        const double rms = numFrames > 0 ? std::sqrt(sumSquares / numFrames) : 0.0;
-        return rms > 1e-9 ? static_cast<float>(20.0 * std::log10(rms)) : kFloorDbfs;
+    // Smoothed mean-square → dBFS. ms = rms², so 20·log10(rms) = 10·log10(ms).
+    static float msToDbfs(double ms) {
+        return ms > 1e-18 ? static_cast<float>(10.0 * std::log10(ms)) : kFloorDbfs;
     }
 
     bool start() {
         if (mStream) return true;  // already open — ignore redundant RESUME
         mWeightA.init(48000.0);
+        mMsZ = mMsA = 0.0;
+        mKFast = 1.0 - std::exp(-1.0 / (48000.0 * 0.125));
+        mKSlow = 1.0 - std::exp(-1.0 / (48000.0 * 1.000));
         AudioStreamBuilder builder;
         builder.setDirection(Direction::Input)
             ->setPerformanceMode(PerformanceMode::LowLatency)
@@ -161,10 +165,14 @@ public:
     float levelDbfs() const { return mLevelDbfs.load(); }
     float levelDbfsA() const { return mLevelDbfsA.load(); }
     bool overRange() const { return mOverRange.load(); }
+    void setFast(bool fast) { mFast.store(fast); }
 
 private:
     std::shared_ptr<AudioStream> mStream;
     AWeighting mWeightA;
+    double mMsZ = 0.0, mMsA = 0.0;       // smoothed mean-square (audio thread only)
+    double mKFast = 0.0, mKSlow = 0.0;   // smoothing coefficients, set in start()
+    std::atomic<bool> mFast{true};       // Fast (125 ms) is the default
     std::atomic<float> mLevelDbfs{kFloorDbfs};
     std::atomic<float> mLevelDbfsA{kFloorDbfs};
     std::atomic<bool> mOverRange{false};
@@ -199,6 +207,11 @@ Java_com_example_howler_audio_AudioEngine_nativeLevelDbfsA(JNIEnv *, jobject) {
 JNIEXPORT jboolean JNICALL
 Java_com_example_howler_audio_AudioEngine_nativeOverRange(JNIEnv *, jobject) {
     return gEngine.overRange() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_howler_audio_AudioEngine_nativeSetFast(JNIEnv *, jobject, jboolean fast) {
+    gEngine.setFast(fast == JNI_TRUE);
 }
 
 }  // extern "C"
