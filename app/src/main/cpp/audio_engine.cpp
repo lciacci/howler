@@ -39,6 +39,7 @@ public:
     }
 
     bool start() {
+        if (mStream) return true;  // already open — ignore redundant RESUME
         AudioStreamBuilder builder;
         builder.setDirection(Direction::Input)
             ->setPerformanceMode(PerformanceMode::LowLatency)

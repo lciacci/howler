@@ -31,9 +31,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.howler.audio.AudioEngine
 import com.example.howler.audio.Calibration
 import com.example.howler.audio.CalibrationStore
@@ -85,11 +88,23 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
     var cal by remember { mutableStateOf<Calibration>(resolveCalibration(store.loadManual(), null)) }
     var showDialog by remember { mutableStateOf(false) }
 
-    // NOTE: a stream opened while the device is dozing/locked stays silenced for
-    // its lifetime (verified on Pixel 10 Pro XL). TODO: restart on lifecycle resume.
-    DisposableEffect(Unit) {
-        started = AudioEngine.nativeStart()
-        onDispose { AudioEngine.nativeStop() }
+    // A stream opened while the device is dozing/locked stays silenced for its
+    // lifetime (verified on Pixel 10 Pro XL). Tie start/stop to RESUME/PAUSE so a
+    // fresh stream opens every time the app returns to foreground.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> started = AudioEngine.nativeStart()
+                Lifecycle.Event.ON_PAUSE -> AudioEngine.nativeStop()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            AudioEngine.nativeStop()
+        }
     }
     LaunchedEffect(started) {
         while (started) {
