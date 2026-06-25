@@ -30,3 +30,31 @@ See `docs/howler-calibration-design.md` § "BUILD STEP ZERO".
 Mirror to claude-workbench #11: first contact with the `MicrophoneInfo` / `AudioRecord`-source
 APIs happened here. The resolver architecture transfers; the device-specific values do not.
 (Not yet transferred — staged here.)
+
+---
+
+# Tier-2 manual calibration result
+
+**Date:** 2026-06-25 · **Device:** Pixel 10 Pro XL · **Weighting/time at cal:** A / Slow
+**Reference meter:** BAFX Advanced Sound Level Meter, ±1.5 dB (dBA/dBC), set to dBA.
+**Method:** steady 1 kHz tone through a speaker, phone mic + BAFX mic side-by-side, equal
+distance. 1 kHz chosen so A=Z=C — one point calibrates both Howler weightings (per design doc).
+
+**Linearity pre-check (two points, before saving):**
+
+| Point | Howler (dBFS) | BAFX (dB SPL) | offset = SPL − dBFS |
+|-------|--------------:|--------------:|--------------------:|
+| 1     |        −68.2  |        58.2   |              126.4  |
+| 2     |        −56.6  |        69.4   |              126.0  |
+
+ΔHowler +11.6 vs ΔBAFX +11.2 → tracks 1:1 within **0.4 dB**; offsets agree within 0.4 dB.
+Linear over the tested range → single-point tier-2 is valid here. **Stored offset ≈ 126.2 dB.**
+
+**Post-save verification:** Howler 68.5 vs BAFX 69.0 → **0.5 dB** (inside BAFX's ±1.5).
+Survives app restart (persisted in `CalibrationStore`).
+
+**Honest accuracy claim:** gated on the BAFX's ±1.5 dB class → Howler's truthful claim is
+**≈±2 dB(A)** (reference error + phone path), never better. This is what the UI states.
+
+**Does not transfer** (per design doc): the 126.2 dB offset is specific to this unit; the
+resolver + procedure transfer, the number does not.
