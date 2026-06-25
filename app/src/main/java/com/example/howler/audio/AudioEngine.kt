@@ -23,4 +23,13 @@ object AudioEngine {
 
     /** Time-weighting: true = Fast (125 ms), false = Slow (1 s). IEC 61672. */
     external fun nativeSetFast(fast: Boolean)
+
+    /** Running peak of the time-weighted level since last reset, flat/Z-weighted. */
+    external fun nativeMaxDbfs(): Float
+
+    /** Running peak of the time-weighted level since last reset, A-weighted. */
+    external fun nativeMaxDbfsA(): Float
+
+    /** Clear the max-hold (both weightings). */
+    external fun nativeResetMax()
 }

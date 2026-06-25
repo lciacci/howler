@@ -108,9 +108,17 @@ public:
             mMsA += (a * a - mMsA) * k;
             if (std::fabs(s) >= kOverThreshold) over = true;  // clip detect on raw signal
         }
-        mLevelDbfs.store(msToDbfs(mMsZ));
-        mLevelDbfsA.store(msToDbfs(mMsA));
+        const float levelZ = msToDbfs(mMsZ);
+        const float levelA = msToDbfs(mMsA);
+        mLevelDbfs.store(levelZ);
+        mLevelDbfsA.store(levelA);
         mOverRange.store(over);
+        // Max-hold: track the running peak of the time-weighted level. Skip while
+        // over-range — a clipped block reads low, so it would corrupt the max.
+        if (!over) {
+            if (levelZ > mMaxDbfs.load()) mMaxDbfs.store(levelZ);
+            if (levelA > mMaxDbfsA.load()) mMaxDbfsA.store(levelA);
+        }
         return DataCallbackResult::Continue;
     }
 
@@ -123,6 +131,7 @@ public:
         if (mStream) return true;  // already open — ignore redundant RESUME
         mWeightA.init(48000.0);
         mMsZ = mMsA = 0.0;
+        resetMax();
         mKFast = 1.0 - std::exp(-1.0 / (48000.0 * 0.125));
         mKSlow = 1.0 - std::exp(-1.0 / (48000.0 * 1.000));
         AudioStreamBuilder builder;
@@ -164,8 +173,11 @@ public:
 
     float levelDbfs() const { return mLevelDbfs.load(); }
     float levelDbfsA() const { return mLevelDbfsA.load(); }
+    float maxDbfs() const { return mMaxDbfs.load(); }
+    float maxDbfsA() const { return mMaxDbfsA.load(); }
     bool overRange() const { return mOverRange.load(); }
     void setFast(bool fast) { mFast.store(fast); }
+    void resetMax() { mMaxDbfs.store(kFloorDbfs); mMaxDbfsA.store(kFloorDbfs); }
 
 private:
     std::shared_ptr<AudioStream> mStream;
@@ -175,6 +187,8 @@ private:
     std::atomic<bool> mFast{true};       // Fast (125 ms) is the default
     std::atomic<float> mLevelDbfs{kFloorDbfs};
     std::atomic<float> mLevelDbfsA{kFloorDbfs};
+    std::atomic<float> mMaxDbfs{kFloorDbfs};
+    std::atomic<float> mMaxDbfsA{kFloorDbfs};
     std::atomic<bool> mOverRange{false};
 };
 
@@ -212,6 +226,21 @@ Java_com_example_howler_audio_AudioEngine_nativeOverRange(JNIEnv *, jobject) {
 JNIEXPORT void JNICALL
 Java_com_example_howler_audio_AudioEngine_nativeSetFast(JNIEnv *, jobject, jboolean fast) {
     gEngine.setFast(fast == JNI_TRUE);
+}
+
+JNIEXPORT jfloat JNICALL
+Java_com_example_howler_audio_AudioEngine_nativeMaxDbfs(JNIEnv *, jobject) {
+    return gEngine.maxDbfs();
+}
+
+JNIEXPORT jfloat JNICALL
+Java_com_example_howler_audio_AudioEngine_nativeMaxDbfsA(JNIEnv *, jobject) {
+    return gEngine.maxDbfsA();
+}
+
+JNIEXPORT void JNICALL
+Java_com_example_howler_audio_AudioEngine_nativeResetMax(JNIEnv *, jobject) {
+    gEngine.resetMax();
 }
 
 }  // extern "C"
