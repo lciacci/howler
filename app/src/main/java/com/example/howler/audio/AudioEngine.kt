@@ -12,8 +12,11 @@ object AudioEngine {
 
     external fun nativeStop()
 
-    /** Most recent block RMS level in dBFS (≤ 0; ~-160 at silence). */
+    /** Most recent block RMS level in dBFS, flat/Z-weighted (≤ 0; ~-160 at silence). */
     external fun nativeLevelDbfs(): Float
+
+    /** Most recent block RMS level in dBFS, A-weighted (IEC 61672). */
+    external fun nativeLevelDbfsA(): Float
 
     /** True if the last block hit/exceeded full scale (clipping → reading is low). */
     external fun nativeOverRange(): Boolean

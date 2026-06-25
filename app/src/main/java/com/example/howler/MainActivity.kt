@@ -11,6 +11,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -83,6 +84,7 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
     var dbfs by remember { mutableFloatStateOf(-160f) }
     var over by remember { mutableStateOf(false) }
     var started by remember { mutableStateOf(true) }
+    var weightingA by remember { mutableStateOf(true) }  // A is the SLM default
     // Tier-1 device sensitivity intentionally not auto-trusted (see Calibration.kt);
     // resolver uses the stored manual point or stays uncalibrated.
     var cal by remember { mutableStateOf<Calibration>(resolveCalibration(store.loadManual(), null)) }
@@ -106,15 +108,15 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
             AudioEngine.nativeStop()
         }
     }
-    LaunchedEffect(started) {
+    LaunchedEffect(started, weightingA) {
         while (started) {
-            dbfs = AudioEngine.nativeLevelDbfs()
+            dbfs = if (weightingA) AudioEngine.nativeLevelDbfsA() else AudioEngine.nativeLevelDbfs()
             over = AudioEngine.nativeOverRange()
             delay(50)
         }
     }
 
-    val (big, caption) = readout(cal, dbfs, over)
+    val (big, caption) = readout(cal, dbfs, over, weightingA)
     Column(
         modifier = modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
@@ -126,6 +128,10 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
         }
         Text(big, style = MaterialTheme.typography.displayLarge)
         Text(caption, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { weightingA = true }, enabled = !weightingA) { Text("A") }
+            TextButton(onClick = { weightingA = false }, enabled = weightingA) { Text("Z") }
+        }
         Button(onClick = { showDialog = true }) {
             Text(if (cal is Calibration.Uncalibrated) "Calibrate" else "Recalibrate")
         }
@@ -147,11 +153,12 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
 }
 
 /** Big readout + caption for the current calibration + measurement. */
-private fun readout(cal: Calibration, dbfs: Float, over: Boolean): Pair<String, String> {
+private fun readout(cal: Calibration, dbfs: Float, over: Boolean, weightingA: Boolean): Pair<String, String> {
     if (over) return "OVER" to "over-range — source exceeds full scale, reading invalid"
+    val w = if (weightingA) "A" else "Z"
     return when (val spl = cal.splFromDbfs(dbfs)) {
-        null -> "%.1f".format(dbfs) to "dBFS · uncalibrated (relative only)"
-        else -> "%.1f".format(spl) to "dB SPL · calibrated, Z-weighted (≈±2 dB at best)"
+        null -> "%.1f".format(dbfs) to "dBFS($w) · uncalibrated (relative only)"
+        else -> "%.1f".format(spl) to "dB($w) SPL · calibrated (≈±2 dB at best)"
     }
 }
 

@@ -2,13 +2,15 @@
 #include <jni.h>
 #include <atomic>
 #include <cmath>
+#include <complex>
 #include <memory>
 #include <android/log.h>
 
 // Howler native audio engine: opens an unprocessed Oboe input stream (config
 // locked by the STEP ZERO probe — see docs/step-zero-results.md), computes RMS
-// → dBFS per callback, and flags over-range. Calibration to SPL is applied
-// upstream in Kotlin (tier-2 manual offset); this layer stays uncalibrated.
+// → dBFS per callback (both Z = flat and A = A-weighted), and flags over-range.
+// Calibration to SPL is applied upstream in Kotlin (tier-2 manual offset); this
+// layer stays uncalibrated.
 
 #define LOG_TAG "HowlerAudio"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -20,26 +22,105 @@ namespace {
 constexpr float kOverThreshold = 0.999f;  // |sample| at/over full scale → clipping
 constexpr float kFloorDbfs = -160.0f;     // silence floor
 
+// A-weighting (IEC 61672). Three biquads in cascade, coefficients derived at
+// init by bilinear transform of the analog prototype — no magic numbers, only
+// the four standard corner frequencies. Run in double precision (the 20.6 Hz
+// pole sits very close to z=1 at 48 kHz). Cascade gain normalized to 0 dB at
+// 1 kHz numerically, so we never hand-carry the A1000 constant.
+struct Biquad {
+    double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0;  // a0 normalized to 1
+    double z1 = 0, z2 = 0;                           // DF2-transposed state
+
+    double process(double x) {
+        const double y = b0 * x + z1;
+        z1 = b1 * x - a1 * y + z2;
+        z2 = b2 * x - a2 * y;
+        return y;
+    }
+    void reset() { z1 = z2 = 0; }
+
+    std::complex<double> responseAt(double omega) const {
+        const std::complex<double> z1i = std::polar(1.0, -omega);  // z^-1
+        const std::complex<double> z2i = z1i * z1i;
+        return (b0 + b1 * z1i + b2 * z2i) / (1.0 + a1 * z1i + a2 * z2i);
+    }
+};
+
+// Bilinear-transform an analog biquad N(s)/D(s) with coefficients
+// N = nb2·s² + nb1·s + nb0, D = s² + da1·s + da0 (da2 == 1), at sample rate fs.
+Biquad bilinear(double nb2, double nb1, double nb0, double da1, double da0, double fs) {
+    const double c = 2.0 * fs;
+    const double c2 = c * c;
+    const double B0 = nb2 * c2 + nb1 * c + nb0;
+    const double B1 = 2.0 * (nb0 - nb2 * c2);
+    const double B2 = nb2 * c2 - nb1 * c + nb0;
+    const double A0 = c2 + da1 * c + da0;
+    const double A1 = 2.0 * (da0 - c2);
+    const double A2 = c2 - da1 * c + da0;
+    return {B0 / A0, B1 / A0, B2 / A0, A1 / A0, A2 / A0};
+}
+
+class AWeighting {
+public:
+    void init(double fs) {
+        constexpr double kTwoPi = 6.283185307179586;
+        const double w1 = kTwoPi * 20.598997;
+        const double w2 = kTwoPi * 107.65265;
+        const double w3 = kTwoPi * 737.86223;
+        const double w4 = kTwoPi * 12194.217;
+        // 4 zeros at s=0, poles {w1²,w2,w3,w4²}; split into 3 biquads.
+        mSec[0] = bilinear(1, 0, 0, 2 * w1, w1 * w1, fs);              // s² / (s+w1)²
+        mSec[1] = bilinear(1, 0, 0, w2 + w3, w2 * w3, fs);            // s² / (s+w2)(s+w3)
+        mSec[2] = bilinear(0, 0, 1, 2 * w4, w4 * w4, fs);            // 1  / (s+w4)²
+        // Normalize cascade to unity gain at 1 kHz.
+        const double omega1k = kTwoPi * 1000.0 / fs;
+        std::complex<double> h = 1.0;
+        for (const auto &s : mSec) h *= s.responseAt(omega1k);
+        mGain = 1.0 / std::abs(h);
+        reset();
+    }
+
+    double process(double x) {
+        double y = x * mGain;
+        for (auto &s : mSec) y = s.process(y);
+        return y;
+    }
+
+    void reset() { for (auto &s : mSec) s.reset(); }
+
+private:
+    Biquad mSec[3];
+    double mGain = 1.0;
+};
+
 class HowlerEngine : public AudioStreamDataCallback {
 public:
     DataCallbackResult onAudioReady(AudioStream *, void *audioData, int32_t numFrames) override {
         auto *samples = static_cast<float *>(audioData);
-        double sumSquares = 0.0;
+        double sumSquares = 0.0;     // Z (flat)
+        double sumSquaresA = 0.0;    // A-weighted
         bool over = false;
         for (int32_t i = 0; i < numFrames; ++i) {
             const float s = samples[i];
             sumSquares += static_cast<double>(s) * s;
-            if (std::fabs(s) >= kOverThreshold) over = true;
+            const double a = mWeightA.process(s);
+            sumSquaresA += a * a;
+            if (std::fabs(s) >= kOverThreshold) over = true;  // clip detect on raw signal
         }
-        const double rms = numFrames > 0 ? std::sqrt(sumSquares / numFrames) : 0.0;
-        const float dbfs = rms > 1e-9 ? static_cast<float>(20.0 * std::log10(rms)) : kFloorDbfs;
-        mLevelDbfs.store(dbfs);
+        mLevelDbfs.store(rmsToDbfs(sumSquares, numFrames));
+        mLevelDbfsA.store(rmsToDbfs(sumSquaresA, numFrames));
         mOverRange.store(over);
         return DataCallbackResult::Continue;
     }
 
+    static float rmsToDbfs(double sumSquares, int32_t numFrames) {
+        const double rms = numFrames > 0 ? std::sqrt(sumSquares / numFrames) : 0.0;
+        return rms > 1e-9 ? static_cast<float>(20.0 * std::log10(rms)) : kFloorDbfs;
+    }
+
     bool start() {
         if (mStream) return true;  // already open — ignore redundant RESUME
+        mWeightA.init(48000.0);
         AudioStreamBuilder builder;
         builder.setDirection(Direction::Input)
             ->setPerformanceMode(PerformanceMode::LowLatency)
@@ -73,15 +154,19 @@ public:
             mStream.reset();
         }
         mLevelDbfs.store(kFloorDbfs);
+        mLevelDbfsA.store(kFloorDbfs);
         mOverRange.store(false);
     }
 
     float levelDbfs() const { return mLevelDbfs.load(); }
+    float levelDbfsA() const { return mLevelDbfsA.load(); }
     bool overRange() const { return mOverRange.load(); }
 
 private:
     std::shared_ptr<AudioStream> mStream;
+    AWeighting mWeightA;
     std::atomic<float> mLevelDbfs{kFloorDbfs};
+    std::atomic<float> mLevelDbfsA{kFloorDbfs};
     std::atomic<bool> mOverRange{false};
 };
 
@@ -104,6 +189,11 @@ Java_com_example_howler_audio_AudioEngine_nativeStop(JNIEnv *, jobject) {
 JNIEXPORT jfloat JNICALL
 Java_com_example_howler_audio_AudioEngine_nativeLevelDbfs(JNIEnv *, jobject) {
     return gEngine.levelDbfs();
+}
+
+JNIEXPORT jfloat JNICALL
+Java_com_example_howler_audio_AudioEngine_nativeLevelDbfsA(JNIEnv *, jobject) {
+    return gEngine.levelDbfsA();
 }
 
 JNIEXPORT jboolean JNICALL
