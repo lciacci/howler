@@ -48,6 +48,8 @@ UI is functional but unstyled — the next work item. iOS not started.
 ### Robustness
 - Stream restarts on visibility (`ON_START`/`ON_STOP`) — survives doze/lock;
   keeps running while paused-but-visible (split-screen).
+- **Screen stays on** while the app is in front (`FLAG_KEEP_SCREEN_ON`), released
+  automatically on background/close — you watch a meter, you don't tap it.
 - Background polling halts (no battery drain when hidden).
 - Mic-permission flow (RECORD_AUDIO).
 - Weighting + time response persist across rotation.
