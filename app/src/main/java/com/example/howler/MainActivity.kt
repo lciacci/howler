@@ -3,6 +3,7 @@ package com.example.howler
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -10,16 +11,24 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,11 +43,26 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.example.howler.R
+import com.example.howler.ui.theme.Phosphor
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.howler.audio.AudioEngine
@@ -68,11 +92,11 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     if (!granted) launcher.launch(Manifest.permission.RECORD_AUDIO)
                 }
-                Scaffold(modifier = Modifier.fillMaxSize()) { pad ->
+                Box(Modifier.fillMaxSize().background(Phosphor.screen)) {
                     if (granted) {
-                        MeterScreen(Modifier.padding(pad))
+                        MeterScreen()
                     } else {
-                        Centered("Microphone permission required.", Modifier.padding(pad))
+                        Centered("MIC PERMISSION REQUIRED", Modifier.systemBarsPadding())
                     }
                 }
             }
@@ -140,40 +164,52 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    val (big, caption) = readout(cal, dbfs, over, weighting, fast)
-    Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+    val spl = cal.splFromDbfs(dbfs)
+    val displayLevel = spl ?: dbfs
+    val wLetter = when (weighting) {
+        AudioEngine.WEIGHTING_A -> "A"
+        AudioEngine.WEIGHTING_C -> "C"
+        else -> "Z"
+    }
+
+    Box(modifier.fillMaxSize()) {
         if (!started) {
-            Text("Audio stream failed to open.", textAlign = TextAlign.Center)
-            return@Column
-        }
-        Text(big, style = MaterialTheme.typography.displayLarge)
-        Text(caption, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
-        if (maxDbfs > -160f) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(statText("Max", maxDbfs, cal), style = MaterialTheme.typography.titleMedium)
-                Text(statText("Min", minDbfs, cal), style = MaterialTheme.typography.titleMedium)
-                Text(statText("Leq", leqDbfs, cal), style = MaterialTheme.typography.titleMedium)
+            Centered("INPUT UNAVAILABLE", Modifier.systemBarsPadding())
+        } else {
+            HeadAndGlow(glowT = smoothstep(50f, 88f, displayLevel))
+            Column(
+                Modifier.fillMaxSize().systemBarsPadding().padding(20.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Segmented(
+                        listOf("A" to AudioEngine.WEIGHTING_A, "C" to AudioEngine.WEIGHTING_C, "Z" to AudioEngine.WEIGHTING_Z),
+                        weighting, { weighting = it },
+                    )
+                    OverIndicator(over)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("%.1f".format(displayLevel), color = Phosphor.readout,
+                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 88.sp)
+                    Text("dB($wLetter) · ${if (fast) "fast" else "slow"}", color = Phosphor.labelBright,
+                        fontFamily = FontFamily.Monospace, fontSize = 15.sp)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Segmented(listOf("FAST" to 1, "SLOW" to 0), if (fast) 1 else 0, { fast = it == 1 })
+                    if (maxDbfs > -160f) {
+                        StatsRow(maxDbfs, minDbfs, leqDbfs, cal)
+                        TextButton(onClick = {
+                            AudioEngine.nativeResetStats(); maxDbfs = -160f; minDbfs = 200f; leqDbfs = -160f
+                        }) { Text("RESET MAX / MIN / Leq", color = Phosphor.toggleInactiveText, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
+                    }
+                    Text(calibrationCaption(cal, wLetter), color = Phosphor.caption,
+                        fontFamily = FontFamily.Monospace, fontSize = 12.sp, textAlign = TextAlign.Center,
+                        modifier = Modifier.clickable { showDialog = true })
+                }
             }
-            TextButton(onClick = {
-                AudioEngine.nativeResetStats(); maxDbfs = -160f; minDbfs = 200f; leqDbfs = -160f
-            }) { Text("Reset") }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { weighting = AudioEngine.WEIGHTING_A }, enabled = weighting != AudioEngine.WEIGHTING_A) { Text("A") }
-            TextButton(onClick = { weighting = AudioEngine.WEIGHTING_C }, enabled = weighting != AudioEngine.WEIGHTING_C) { Text("C") }
-            TextButton(onClick = { weighting = AudioEngine.WEIGHTING_Z }, enabled = weighting != AudioEngine.WEIGHTING_Z) { Text("Z") }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { fast = true }, enabled = !fast) { Text("Fast") }
-            TextButton(onClick = { fast = false }, enabled = fast) { Text("Slow") }
-        }
-        Button(onClick = { showDialog = true }) {
-            Text(if (cal is Calibration.Uncalibrated) "Calibrate" else "Recalibrate")
-        }
+        ScanlineOverlay(Modifier.fillMaxSize())
     }
 
     if (showDialog) {
@@ -191,22 +227,126 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
     }
 }
 
-/** "<name> <value>" for a stat line, in dB SPL when calibrated else raw dBFS. */
-private fun statText(name: String, dbfs: Float, cal: Calibration): String =
-    "$name %.1f".format(cal.splFromDbfs(dbfs) ?: dbfs)
+private const val HEAD_RATIO = 380f / 505f  // extracted asset aspect
 
-/** Big readout + caption for the current calibration + measurement. */
-private fun readout(cal: Calibration, dbfs: Float, over: Boolean, weighting: Int, fast: Boolean): Pair<String, String> {
-    if (over) return "OVER" to "over-range — source exceeds full scale, reading invalid"
-    val w = when (weighting) {
-        AudioEngine.WEIGHTING_A -> "A"
-        AudioEngine.WEIGHTING_C -> "C"
-        else -> "Z"
+/**
+ * Constant phosphor head with the one reactive channel: an amber edge-glow that
+ * swells with level, as if something behind the head were lighting up. The glow
+ * must read as a backlight halo around the silhouette — never the face glowing.
+ *
+ * Layers, back to front:
+ *   1. glow — a blurred amber silhouette (spread driven by level on API 31+, the
+ *      pre-blurred ring asset below that).
+ *   2. opaque BLACK head silhouette — masks the glow's interior so only the halo
+ *      that spilled past the sharp edge survives. Without this the translucent
+ *      head lets the glow bleed through the face.
+ *   3. dim amber head — the visible phosphor face, drawn over the black mask.
+ */
+@Composable
+private fun HeadAndGlow(glowT: Float) {
+    val glowAlpha = glowT * 0.4f
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val head = painterResource(R.drawable.howler_head)
+        val headMod = Modifier.fillMaxWidth(0.66f).aspectRatio(HEAD_RATIO)
+        if (glowAlpha > 0.001f) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Image(
+                    head, null,
+                    headMod
+                        .blur(lerp(14.dp, 40.dp, glowT), BlurredEdgeTreatment.Unbounded)
+                        .alpha(glowAlpha),
+                    colorFilter = ColorFilter.tint(Phosphor.glow, BlendMode.SrcIn),
+                    contentScale = ContentScale.Fit,
+                )
+            } else {
+                Image(
+                    painterResource(R.drawable.howler_glow), null,
+                    Modifier.fillMaxWidth(0.70f).aspectRatio(HEAD_RATIO).alpha(glowAlpha),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+        // Opaque black silhouette — blocks the glow from the head's interior.
+        Image(head, null, headMod, colorFilter = ColorFilter.tint(Color.Black, BlendMode.SrcIn),
+            contentScale = ContentScale.Fit)
+        // Dim phosphor face on top of the mask.
+        Image(head, null, headMod.alpha(0.33f), contentScale = ContentScale.Fit)
     }
-    val t = if (fast) "F" else "S"
-    return when (val spl = cal.splFromDbfs(dbfs)) {
-        null -> "%.1f".format(dbfs) to "dBFS($w$t) · uncalibrated (relative only)"
-        else -> "%.1f".format(spl) to "dB($w$t) SPL · calibrated (≈±2 dB at best)"
+}
+
+/** Hermite smoothstep — 0 below edge0, 1 above edge1, eased between. */
+private fun smoothstep(edge0: Float, edge1: Float, x: Float): Float {
+    val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+/** Bottom calibration caption: accuracy claim + source, or uncalibrated. */
+private fun calibrationCaption(cal: Calibration, w: String): String = when (cal) {
+    is Calibration.Uncalibrated -> "uncalibrated · relative dBFS · tap to calibrate"
+    is Calibration.Manual -> "≈ ±2 dB($w) · tier 2 · ${cal.referenceMeterClass}"
+    is Calibration.DeviceReported -> "≈ ±2 dB($w) · tier 1 · device"
+}
+
+/** Segmented control: one active cell, brighter than the rest (not greyed). */
+@Composable
+private fun Segmented(items: List<Pair<String, Int>>, selected: Int, onSelect: (Int) -> Unit) {
+    Row {
+        for ((label, value) in items) {
+            val active = value == selected
+            Box(
+                Modifier
+                    .clickable { onSelect(value) }
+                    .background(if (active) Phosphor.toggleActiveFill else Color.Transparent)
+                    .border(1.dp, if (active) Phosphor.toggleActiveBorder else Phosphor.toggleInactiveBorder)
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
+            ) {
+                Text(label, color = if (active) Phosphor.readout else Phosphor.toggleInactiveText,
+                    fontFamily = FontFamily.Monospace, fontSize = 14.sp)
+            }
+        }
+    }
+}
+
+/** The lone red: lit on clip / over-range, dim outline otherwise. */
+@Composable
+private fun OverIndicator(lit: Boolean) {
+    Box(
+        Modifier
+            .background(if (lit) Phosphor.overBg else Color.Transparent)
+            .border(1.dp, if (lit) Phosphor.overBorder else Phosphor.toggleInactiveBorder, RoundedCornerShape(3.dp))
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+    ) {
+        Text("OVER", color = if (lit) Phosphor.overText else Phosphor.toggleInactiveBorder,
+            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+    }
+}
+
+/** MAX / MIN / Leq — dim labels over amber values, three columns. */
+@Composable
+private fun StatsRow(maxDbfs: Float, minDbfs: Float, leqDbfs: Float, cal: Calibration) {
+    Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+        for ((label, v) in listOf("MAX" to maxDbfs, "MIN" to minDbfs, "Leq" to leqDbfs)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(label, color = Phosphor.label, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                Text("%.1f".format(cal.splFromDbfs(v) ?: v), color = Phosphor.readout,
+                    fontFamily = FontFamily.Monospace, fontSize = 18.sp)
+            }
+        }
+    }
+}
+
+/** Subtle CRT scanlines over everything — 3px pitch, low alpha. Non-interactive. */
+@Composable
+private fun ScanlineOverlay(modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val pitch = 3.dp.toPx()
+        val stroke = 1.dp.toPx()
+        val line = Phosphor.scanline.copy(alpha = 0.42f)
+        var y = 0f
+        while (y < size.height) {
+            drawLine(line, Offset(0f, y), Offset(size.width, y), strokeWidth = stroke)
+            y += pitch
+        }
     }
 }
 
@@ -246,5 +386,5 @@ private fun Centered(text: String, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
-    ) { Text(text, textAlign = TextAlign.Center) }
+    ) { Text(text, color = Phosphor.labelBright, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center) }
 }
