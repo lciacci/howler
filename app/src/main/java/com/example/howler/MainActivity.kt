@@ -54,6 +54,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -190,8 +191,16 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
                     OverIndicator(over)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("%.1f".format(displayLevel), color = Phosphor.readout,
-                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 88.sp)
+                    val bigText = "%.1f".format(displayLevel)
+                    // DSEG glyphs are wide; shrink for longer values so 3-digit SPL
+                    // (or a negative dBFS) never clips. 2-digit readings stay huge.
+                    val bigSize = when {
+                        bigText.length <= 4 -> 108.sp
+                        bigText.length == 5 -> 84.sp
+                        else -> 66.sp
+                    }
+                    Text(bigText, color = Phosphor.readout,
+                        fontFamily = SegmentFont, fontSize = bigSize, maxLines = 1)
                     Text("dB($wLetter) · ${if (fast) "fast" else "slow"}", color = Phosphor.labelBright,
                         fontFamily = FontFamily.Monospace, fontSize = 15.sp)
                 }
@@ -228,6 +237,9 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
 }
 
 private const val HEAD_RATIO = 380f / 505f  // extracted asset aspect
+
+/** DSEG7 Classic — 7-segment LED face for the hero readout (OFL, see res/font). */
+private val SegmentFont = FontFamily(Font(R.font.dseg7_classic_bold))
 
 /**
  * Constant phosphor head with the one reactive channel: an amber edge-glow that
