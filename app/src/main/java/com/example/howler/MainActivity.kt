@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,22 +86,25 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
     var maxDbfs by remember { mutableFloatStateOf(-160f) }
     var over by remember { mutableStateOf(false) }
     var started by remember { mutableStateOf(true) }
-    var weightingA by remember { mutableStateOf(true) }  // A is the SLM default
-    var fast by remember { mutableStateOf(true) }         // Fast (125 ms) default
+    var weightingA by rememberSaveable { mutableStateOf(true) }  // A is the SLM default
+    var fast by rememberSaveable { mutableStateOf(true) }        // Fast (125 ms) default
     // Tier-1 device sensitivity intentionally not auto-trusted (see Calibration.kt);
     // resolver uses the stored manual point or stays uncalibrated.
     var cal by remember { mutableStateOf<Calibration>(resolveCalibration(store.loadManual(), null)) }
     var showDialog by remember { mutableStateOf(false) }
 
     // A stream opened while the device is dozing/locked stays silenced for its
-    // lifetime (verified on Pixel 10 Pro XL). Tie start/stop to RESUME/PAUSE so a
-    // fresh stream opens every time the app returns to foreground.
+    // lifetime (verified on Pixel 10 Pro XL). Tie start/stop to START/STOP (not
+    // RESUME/PAUSE) so a fresh stream opens whenever the app becomes visible, yet
+    // keeps running while paused-but-visible (split-screen/multi-window). Clearing
+    // `started` on stop halts the polling coroutine so it doesn't drain battery
+    // in the background.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> started = AudioEngine.nativeStart()
-                Lifecycle.Event.ON_PAUSE -> AudioEngine.nativeStop()
+                Lifecycle.Event.ON_START -> started = AudioEngine.nativeStart()
+                Lifecycle.Event.ON_STOP -> { AudioEngine.nativeStop(); started = false }
                 else -> Unit
             }
         }

@@ -113,12 +113,12 @@ public:
         mLevelDbfs.store(levelZ);
         mLevelDbfsA.store(levelA);
         mOverRange.store(over);
-        // Max-hold: track the running peak of the time-weighted level. Skip while
-        // over-range — a clipped block reads low, so it would corrupt the max.
-        if (!over) {
-            if (levelZ > mMaxDbfs.load()) mMaxDbfs.store(levelZ);
-            if (levelA > mMaxDbfsA.load()) mMaxDbfsA.store(levelA);
-        }
+        // Max-hold: track the running peak of the time-weighted level. A clipped
+        // block reads HIGH (samples pinned near full scale) — exactly the loud
+        // events the peak exists to catch — so it must be included, not skipped.
+        // The captured value is a lower bound on the true (clipped) peak.
+        if (levelZ > mMaxDbfs.load()) mMaxDbfs.store(levelZ);
+        if (levelA > mMaxDbfsA.load()) mMaxDbfsA.store(levelA);
         return DataCallbackResult::Continue;
     }
 
@@ -129,11 +129,6 @@ public:
 
     bool start() {
         if (mStream) return true;  // already open — ignore redundant RESUME
-        mWeightA.init(48000.0);
-        mMsZ = mMsA = 0.0;
-        resetMax();
-        mKFast = 1.0 - std::exp(-1.0 / (48000.0 * 0.125));
-        mKSlow = 1.0 - std::exp(-1.0 / (48000.0 * 1.000));
         AudioStreamBuilder builder;
         builder.setDirection(Direction::Input)
             ->setPerformanceMode(PerformanceMode::LowLatency)
@@ -148,6 +143,16 @@ public:
             LOGI("openStream failed: %s", convertToText(result));
             return false;
         }
+        // setSampleRate() is a request — init the DSP against the rate Oboe
+        // actually granted, or the A-weighting and Fast/Slow timing would be
+        // wrong on any device/route that opens at a different rate. Max-hold is
+        // NOT reset here: it must survive a lifecycle stop/restart (the captured
+        // peak is the point of the feature); only the UI/config resets it.
+        const double fs = mStream->getSampleRate();
+        mWeightA.init(fs);
+        mMsZ = mMsA = 0.0;
+        mKFast = 1.0 - std::exp(-1.0 / (fs * 0.125));
+        mKSlow = 1.0 - std::exp(-1.0 / (fs * 1.000));
         result = mStream->requestStart();
         if (result != Result::OK) {
             LOGI("requestStart failed: %s", convertToText(result));
