@@ -115,6 +115,7 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
     val store = remember { CalibrationStore(context) }
     var dbfs by remember { mutableFloatStateOf(-160f) }
     var maxDbfs by remember { mutableFloatStateOf(-160f) }
+    var maxClipped by remember { mutableStateOf(false) }
     var minDbfs by remember { mutableFloatStateOf(200f) }
     var leqDbfs by remember { mutableFloatStateOf(-160f) }
     var over by remember { mutableStateOf(false) }
@@ -158,6 +159,7 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
         while (started) {
             dbfs = AudioEngine.nativeLevelDbfs()
             maxDbfs = AudioEngine.nativeMaxDbfs()
+            maxClipped = AudioEngine.nativeMaxClipped()
             minDbfs = AudioEngine.nativeMinDbfs()
             leqDbfs = AudioEngine.nativeLeqDbfs()
             over = AudioEngine.nativeOverRange()
@@ -175,7 +177,7 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
 
     Box(modifier.fillMaxSize()) {
         if (!started) {
-            Centered("INPUT UNAVAILABLE", Modifier.systemBarsPadding())
+            InputUnavailable(onRetry = { started = AudioEngine.nativeStart() })
         } else {
             HeadAndGlow(glowT = smoothstep(50f, 88f, displayLevel))
             Column(
@@ -207,7 +209,7 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Segmented(listOf("FAST" to 1, "SLOW" to 0), if (fast) 1 else 0, { fast = it == 1 })
                     if (maxDbfs > -160f) {
-                        StatsRow(maxDbfs, minDbfs, leqDbfs, cal)
+                        StatsRow(maxDbfs, maxClipped, minDbfs, leqDbfs, cal)
                         TextButton(onClick = {
                             AudioEngine.nativeResetStats(); maxDbfs = -160f; minDbfs = 200f; leqDbfs = -160f
                         }) { Text("RESET MAX / MIN / Leq", color = Phosphor.toggleInactiveText, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
@@ -333,16 +335,49 @@ private fun OverIndicator(lit: Boolean) {
     }
 }
 
-/** MAX / MIN / Leq — dim labels over amber values, three columns. */
+/** MAX / MIN / Leq — dim labels over amber values, three columns. The Max value
+ *  carries a red "≥" when the peak came from a clipped block (true level higher). */
 @Composable
-private fun StatsRow(maxDbfs: Float, minDbfs: Float, leqDbfs: Float, cal: Calibration) {
+private fun StatsRow(maxDbfs: Float, maxClipped: Boolean, minDbfs: Float, leqDbfs: Float, cal: Calibration) {
     Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-        for ((label, v) in listOf("MAX" to maxDbfs, "MIN" to minDbfs, "Leq" to leqDbfs)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(label, color = Phosphor.label, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                Text("%.1f".format(cal.splFromDbfs(v) ?: v), color = Phosphor.readout,
-                    fontFamily = FontFamily.Monospace, fontSize = 18.sp)
-            }
+        StatCell("MAX", maxDbfs, cal, clipped = maxClipped)
+        StatCell("MIN", minDbfs, cal)
+        StatCell("Leq", leqDbfs, cal)
+    }
+}
+
+@Composable
+private fun StatCell(label: String, dbfs: Float, cal: Calibration, clipped: Boolean = false) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, color = Phosphor.label, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (clipped) Text("≥", color = Phosphor.overText, fontFamily = FontFamily.Monospace, fontSize = 18.sp)
+            Text("%.1f".format(cal.splFromDbfs(dbfs) ?: dbfs), color = Phosphor.readout,
+                fontFamily = FontFamily.Monospace, fontSize = 18.sp)
+        }
+    }
+}
+
+/** Recoverable "mic unavailable" state — another app likely holds the input. */
+@Composable
+private fun InputUnavailable(onRetry: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("INPUT UNAVAILABLE", color = Phosphor.overText,
+            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text("the mic is held by another app", color = Phosphor.labelBright,
+            fontFamily = FontFamily.Monospace, fontSize = 13.sp, textAlign = TextAlign.Center)
+        Box(
+            Modifier
+                .clickable(onClick = onRetry)
+                .background(Phosphor.toggleActiveFill)
+                .border(1.dp, Phosphor.toggleActiveBorder)
+                .padding(horizontal = 24.dp, vertical = 10.dp),
+        ) {
+            Text("RETRY", color = Phosphor.readout, fontFamily = FontFamily.Monospace, fontSize = 15.sp)
         }
     }
 }

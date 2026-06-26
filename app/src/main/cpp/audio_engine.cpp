@@ -153,8 +153,12 @@ public:
         // Max-hold: peak of the time-weighted level. A clipped block reads HIGH
         // (samples pinned near full scale) — exactly the loud events the peak
         // exists to catch — so it is included, not skipped; the value is a lower
-        // bound on the true (clipped) peak.
-        if (level > mMaxDbfs.load()) mMaxDbfs.store(level);
+        // bound on the true (clipped) peak. Flag when the peak came from a clipped
+        // block so the UI can mark it "≥".
+        if (level > mMaxDbfs.load()) {
+            mMaxDbfs.store(level);
+            mMaxClipped.store(over);
+        }
         // Min-hold: quietest time-weighted level since reset.
         if (level < mMinDbfs.load()) mMinDbfs.store(level);
         // Leq: equivalent continuous level = 10·log10(mean energy since reset).
@@ -178,6 +182,7 @@ public:
         mLeqSum = 0.0;
         mLeqCount = 0;
         mMaxDbfs.store(kFloorDbfs);
+        mMaxClipped.store(false);
         mMinDbfs.store(kMinSentinel);
         mLeqDbfs.store(kFloorDbfs);
     }
@@ -232,6 +237,7 @@ public:
 
     float levelDbfs() const { return mLevelDbfs.load(); }
     float maxDbfs() const { return mMaxDbfs.load(); }
+    bool maxClipped() const { return mMaxClipped.load(); }
     float minDbfs() const { return mMinDbfs.load(); }
     float leqDbfs() const { return mLeqDbfs.load(); }
     bool overRange() const { return mOverRange.load(); }
@@ -253,6 +259,7 @@ private:
     std::atomic<bool> mResetRequested{false};
     std::atomic<float> mLevelDbfs{kFloorDbfs};
     std::atomic<float> mMaxDbfs{kFloorDbfs};
+    std::atomic<bool> mMaxClipped{false};
     std::atomic<float> mMinDbfs{kMinSentinel};
     std::atomic<float> mLeqDbfs{kFloorDbfs};
     std::atomic<bool> mOverRange{false};
@@ -297,6 +304,11 @@ Java_com_example_howler_audio_AudioEngine_nativeSetWeighting(JNIEnv *, jobject, 
 JNIEXPORT jfloat JNICALL
 Java_com_example_howler_audio_AudioEngine_nativeMaxDbfs(JNIEnv *, jobject) {
     return gEngine.maxDbfs();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_example_howler_audio_AudioEngine_nativeMaxClipped(JNIEnv *, jobject) {
+    return gEngine.maxClipped() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jfloat JNICALL

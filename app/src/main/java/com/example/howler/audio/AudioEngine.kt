@@ -33,6 +33,9 @@ object AudioEngine {
     /** Running peak of the time-weighted level since last reset. */
     external fun nativeMaxDbfs(): Float
 
+    /** True if the peak came from a clipped block — true level is ≥ the shown Max. */
+    external fun nativeMaxClipped(): Boolean
+
     /** Running minimum of the time-weighted level since last reset. */
     external fun nativeMinDbfs(): Float
 
