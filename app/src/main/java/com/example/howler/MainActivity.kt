@@ -27,10 +27,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -407,22 +408,39 @@ private fun CalibrateDialog(
     var refSplText by remember { mutableStateOf("") }
     var meterText by remember { mutableStateOf("class-2") }
     val refSpl = refSplText.toDoubleOrNull()
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Phosphor.readout, unfocusedTextColor = Phosphor.readout,
+        cursorColor = Phosphor.readout,
+        focusedBorderColor = Phosphor.toggleActiveBorder, unfocusedBorderColor = Phosphor.toggleInactiveBorder,
+        focusedLabelColor = Phosphor.labelBright, unfocusedLabelColor = Phosphor.toggleInactiveText,
+    )
+    val mono = TextStyle(fontFamily = FontFamily.Monospace, color = Phosphor.readout)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Manual calibration") },
+        containerColor = Phosphor.screen,
+        title = { Text("MANUAL CALIBRATION", color = Phosphor.readout, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Hold your reference meter at a steady source, then enter its reading.")
-                Text("Phone now: %.1f dBFS".format(currentDbfs))
-                OutlinedTextField(refSplText, { refSplText = it }, label = { Text("Reference dB SPL") })
-                OutlinedTextField(meterText, { meterText = it }, label = { Text("Reference meter class") })
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Hold your reference meter at a steady source — best near 1 kHz — then enter its reading.",
+                    color = Phosphor.labelBright, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                Text("phone now: %.1f dBFS".format(currentDbfs),
+                    color = Phosphor.caption, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                OutlinedTextField(refSplText, { refSplText = it }, textStyle = mono, colors = fieldColors,
+                    label = { Text("reference dB SPL", fontFamily = FontFamily.Monospace) })
+                OutlinedTextField(meterText, { meterText = it }, textStyle = mono, colors = fieldColors,
+                    label = { Text("reference meter class", fontFamily = FontFamily.Monospace) })
             }
         },
         confirmButton = {
-            TextButton(enabled = refSpl != null, onClick = { onSave(refSpl!!, meterText) }) { Text("Save") }
+            TextButton(enabled = refSpl != null, onClick = { onSave(refSpl!!, meterText) }) {
+                Text("SAVE", color = if (refSpl != null) Phosphor.readout else Phosphor.toggleInactiveBorder,
+                    fontFamily = FontFamily.Monospace)
+            }
         },
         dismissButton = {
-            TextButton(onClick = onClear) { Text("Clear") }
+            TextButton(onClick = onClear) {
+                Text("CLEAR", color = Phosphor.overText, fontFamily = FontFamily.Monospace)
+            }
         },
     )
 }

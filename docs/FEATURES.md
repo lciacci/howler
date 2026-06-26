@@ -80,13 +80,14 @@ CRT amber-phosphor meter screen per `design/howler-ui-spec.md`:
   block (true level higher).
 - **Mic-busy retry** — recoverable `INPUT UNAVAILABLE` screen with a RETRY button
   instead of a dead error.
-- Tap the calibration caption to (re)calibrate.
+- Tap the calibration caption to (re)calibrate; the calibration dialog is
+  phosphor-styled to match.
 
 All verified on Pixel 10 Pro XL (clip states via forced-test — true clip needs
 ~126 dB acoustic).
 
-Still open: LED "ghost" unlit segments (dim 8.8.8 backing), and any further
-visual tuning.
+UI considered done for now. Explicitly declined: LED "ghost" unlit segments,
+further visual tuning.
 
 ---
 
