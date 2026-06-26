@@ -30,6 +30,18 @@ object AudioEngine {
     /** Running peak of the time-weighted level since last reset, A-weighted. */
     external fun nativeMaxDbfsA(): Float
 
-    /** Clear the max-hold (both weightings). */
-    external fun nativeResetMax()
+    /** Running minimum of the time-weighted level since last reset, flat/Z-weighted. */
+    external fun nativeMinDbfs(): Float
+
+    /** Running minimum of the time-weighted level since last reset, A-weighted. */
+    external fun nativeMinDbfsA(): Float
+
+    /** Equivalent continuous level (Leq) since last reset, flat/Z-weighted. */
+    external fun nativeLeqDbfs(): Float
+
+    /** Equivalent continuous level (Leq) since last reset, A-weighted. */
+    external fun nativeLeqDbfsA(): Float
+
+    /** Clear all since-reset stats (max, min, Leq), both weightings. */
+    external fun nativeResetStats()
 }

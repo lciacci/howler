@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cmath>
 #include <complex>
+#include <cstdint>
 #include <memory>
 #include <android/log.h>
 
@@ -21,6 +22,7 @@ namespace {
 
 constexpr float kOverThreshold = 0.999f;  // |sample| at/over full scale → clipping
 constexpr float kFloorDbfs = -160.0f;     // silence floor
+constexpr float kMinSentinel = 200.0f;    // Min-hold "no reading yet" (above any real dB)
 
 // A-weighting (IEC 61672). Three biquads in cascade, coefficients derived at
 // init by bilinear transform of the analog prototype — no magic numbers, only
@@ -96,35 +98,74 @@ private:
 class HowlerEngine : public AudioStreamDataCallback {
 public:
     DataCallbackResult onAudioReady(AudioStream *, void *audioData, int32_t numFrames) override {
+        // Stats reset is requested from the UI thread but applied here, on the
+        // audio thread, so the accumulators are only ever touched by one thread.
+        if (mResetRequested.exchange(false)) clearStats();
         auto *samples = static_cast<float *>(audioData);
         // IEC 61672 exponential time-weighting: one-pole smoother on the
         // mean-square with k = 1 - exp(-1/(fs·τ)). Fast τ=125 ms, Slow τ=1 s.
         const double k = mFast.load() ? mKFast : mKSlow;
         bool over = false;
+        double blockSumZ = 0.0, blockSumA = 0.0;
         for (int32_t i = 0; i < numFrames; ++i) {
             const float s = samples[i];
-            const double a = mWeightA.process(s);
-            mMsZ += (static_cast<double>(s) * s - mMsZ) * k;
-            mMsA += (a * a - mMsA) * k;
+            const double a = mWeightA.process(s);  // stateful — run every sample
+            const double sq = static_cast<double>(s) * s;
+            const double aq = a * a;
+            blockSumZ += sq;
+            blockSumA += aq;
+            mLeqSumZ += sq;  // unweighted energy sum, for Leq
+            mLeqSumA += aq;
+            if (mPrimed) { mMsZ += (sq - mMsZ) * k; mMsA += (aq - mMsA) * k; }
             if (std::fabs(s) >= kOverThreshold) over = true;  // clip detect on raw signal
         }
+        // Prime the smoother to the first block's mean-square, not a single
+        // sample (a sample near a zero-crossing reads ~floor and, with Slow's
+        // tiny coefficient, would never recover — corrupting Min-hold).
+        if (!mPrimed && numFrames > 0) {
+            mMsZ = blockSumZ / numFrames;
+            mMsA = blockSumA / numFrames;
+            mPrimed = true;
+        }
+        mLeqCount += numFrames;
         const float levelZ = msToDbfs(mMsZ);
         const float levelA = msToDbfs(mMsA);
         mLevelDbfs.store(levelZ);
         mLevelDbfsA.store(levelA);
         mOverRange.store(over);
-        // Max-hold: track the running peak of the time-weighted level. A clipped
-        // block reads HIGH (samples pinned near full scale) — exactly the loud
-        // events the peak exists to catch — so it must be included, not skipped.
-        // The captured value is a lower bound on the true (clipped) peak.
+        // Max-hold: peak of the time-weighted level. A clipped block reads HIGH
+        // (samples pinned near full scale) — exactly the loud events the peak
+        // exists to catch — so it is included, not skipped; the value is a lower
+        // bound on the true (clipped) peak.
         if (levelZ > mMaxDbfs.load()) mMaxDbfs.store(levelZ);
         if (levelA > mMaxDbfsA.load()) mMaxDbfsA.store(levelA);
+        // Min-hold: quietest time-weighted level since reset.
+        if (levelZ < mMinDbfs.load()) mMinDbfs.store(levelZ);
+        if (levelA < mMinDbfsA.load()) mMinDbfsA.store(levelA);
+        // Leq: equivalent continuous level = 10·log10(mean energy since reset).
+        // Independent of Fast/Slow (raw energy average, no smoothing).
+        mLeqDbfs.store(msToDbfs(mLeqSumZ / mLeqCount));
+        mLeqDbfsA.store(msToDbfs(mLeqSumA / mLeqCount));
         return DataCallbackResult::Continue;
     }
 
     // Smoothed mean-square → dBFS. ms = rms², so 20·log10(rms) = 10·log10(ms).
     static float msToDbfs(double ms) {
         return ms > 1e-18 ? static_cast<float>(10.0 * std::log10(ms)) : kFloorDbfs;
+    }
+
+    // Clear all since-reset statistics + smoother state. Audio thread only.
+    void clearStats() {
+        mMsZ = mMsA = 0.0;
+        mPrimed = false;
+        mLeqSumZ = mLeqSumA = 0.0;
+        mLeqCount = 0;
+        mMaxDbfs.store(kFloorDbfs);
+        mMaxDbfsA.store(kFloorDbfs);
+        mMinDbfs.store(kMinSentinel);
+        mMinDbfsA.store(kMinSentinel);
+        mLeqDbfs.store(kFloorDbfs);
+        mLeqDbfsA.store(kFloorDbfs);
     }
 
     bool start() {
@@ -145,12 +186,11 @@ public:
         }
         // setSampleRate() is a request — init the DSP against the rate Oboe
         // actually granted, or the A-weighting and Fast/Slow timing would be
-        // wrong on any device/route that opens at a different rate. Max-hold is
-        // NOT reset here: it must survive a lifecycle stop/restart (the captured
-        // peak is the point of the feature); only the UI/config resets it.
+        // wrong on any device/route that opens at a different rate. Stats
+        // (Max/Min/Leq) and the smoother are NOT reset here: they must survive a
+        // lifecycle stop/restart; only the UI/config resets them.
         const double fs = mStream->getSampleRate();
         mWeightA.init(fs);
-        mMsZ = mMsA = 0.0;
         mKFast = 1.0 - std::exp(-1.0 / (fs * 0.125));
         mKSlow = 1.0 - std::exp(-1.0 / (fs * 1.000));
         result = mStream->requestStart();
@@ -180,20 +220,32 @@ public:
     float levelDbfsA() const { return mLevelDbfsA.load(); }
     float maxDbfs() const { return mMaxDbfs.load(); }
     float maxDbfsA() const { return mMaxDbfsA.load(); }
+    float minDbfs() const { return mMinDbfs.load(); }
+    float minDbfsA() const { return mMinDbfsA.load(); }
+    float leqDbfs() const { return mLeqDbfs.load(); }
+    float leqDbfsA() const { return mLeqDbfsA.load(); }
     bool overRange() const { return mOverRange.load(); }
     void setFast(bool fast) { mFast.store(fast); }
-    void resetMax() { mMaxDbfs.store(kFloorDbfs); mMaxDbfsA.store(kFloorDbfs); }
+    void resetStats() { mResetRequested.store(true); }  // applied on the audio thread
 
 private:
     std::shared_ptr<AudioStream> mStream;
     AWeighting mWeightA;
     double mMsZ = 0.0, mMsA = 0.0;       // smoothed mean-square (audio thread only)
     double mKFast = 0.0, mKSlow = 0.0;   // smoothing coefficients, set in start()
+    bool mPrimed = false;                // smoother seeded? (audio thread only)
+    double mLeqSumZ = 0.0, mLeqSumA = 0.0;  // energy sums since reset (audio thread only)
+    uint64_t mLeqCount = 0;                 // samples summed (audio thread only)
     std::atomic<bool> mFast{true};       // Fast (125 ms) is the default
+    std::atomic<bool> mResetRequested{false};
     std::atomic<float> mLevelDbfs{kFloorDbfs};
     std::atomic<float> mLevelDbfsA{kFloorDbfs};
     std::atomic<float> mMaxDbfs{kFloorDbfs};
     std::atomic<float> mMaxDbfsA{kFloorDbfs};
+    std::atomic<float> mMinDbfs{kMinSentinel};
+    std::atomic<float> mMinDbfsA{kMinSentinel};
+    std::atomic<float> mLeqDbfs{kFloorDbfs};
+    std::atomic<float> mLeqDbfsA{kFloorDbfs};
     std::atomic<bool> mOverRange{false};
 };
 
@@ -243,9 +295,29 @@ Java_com_example_howler_audio_AudioEngine_nativeMaxDbfsA(JNIEnv *, jobject) {
     return gEngine.maxDbfsA();
 }
 
+JNIEXPORT jfloat JNICALL
+Java_com_example_howler_audio_AudioEngine_nativeMinDbfs(JNIEnv *, jobject) {
+    return gEngine.minDbfs();
+}
+
+JNIEXPORT jfloat JNICALL
+Java_com_example_howler_audio_AudioEngine_nativeMinDbfsA(JNIEnv *, jobject) {
+    return gEngine.minDbfsA();
+}
+
+JNIEXPORT jfloat JNICALL
+Java_com_example_howler_audio_AudioEngine_nativeLeqDbfs(JNIEnv *, jobject) {
+    return gEngine.leqDbfs();
+}
+
+JNIEXPORT jfloat JNICALL
+Java_com_example_howler_audio_AudioEngine_nativeLeqDbfsA(JNIEnv *, jobject) {
+    return gEngine.leqDbfsA();
+}
+
 JNIEXPORT void JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeResetMax(JNIEnv *, jobject) {
-    gEngine.resetMax();
+Java_com_example_howler_audio_AudioEngine_nativeResetStats(JNIEnv *, jobject) {
+    gEngine.resetStats();
 }
 
 }  // extern "C"

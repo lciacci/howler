@@ -84,6 +84,8 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
     val store = remember { CalibrationStore(context) }
     var dbfs by remember { mutableFloatStateOf(-160f) }
     var maxDbfs by remember { mutableFloatStateOf(-160f) }
+    var minDbfs by remember { mutableFloatStateOf(200f) }
+    var leqDbfs by remember { mutableFloatStateOf(-160f) }
     var over by remember { mutableStateOf(false) }
     var started by remember { mutableStateOf(true) }
     var weightingA by rememberSaveable { mutableStateOf(true) }  // A is the SLM default
@@ -115,20 +117,22 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
         }
     }
     LaunchedEffect(fast) { AudioEngine.nativeSetFast(fast) }
-    // Max-hold units depend on weighting + time response — clear it when either changes.
-    LaunchedEffect(weightingA, fast) { AudioEngine.nativeResetMax(); maxDbfs = -160f }
+    // Stat units depend on weighting + time response — clear them when either changes.
+    LaunchedEffect(weightingA, fast) {
+        AudioEngine.nativeResetStats(); maxDbfs = -160f; minDbfs = 200f; leqDbfs = -160f
+    }
     LaunchedEffect(started, weightingA) {
         while (started) {
             dbfs = if (weightingA) AudioEngine.nativeLevelDbfsA() else AudioEngine.nativeLevelDbfs()
             maxDbfs = if (weightingA) AudioEngine.nativeMaxDbfsA() else AudioEngine.nativeMaxDbfs()
+            minDbfs = if (weightingA) AudioEngine.nativeMinDbfsA() else AudioEngine.nativeMinDbfs()
+            leqDbfs = if (weightingA) AudioEngine.nativeLeqDbfsA() else AudioEngine.nativeLeqDbfs()
             over = AudioEngine.nativeOverRange()
             delay(50)
         }
     }
 
     val (big, caption) = readout(cal, dbfs, over, weightingA, fast)
-    val maxLine = cal.splFromDbfs(maxDbfs)?.let { "Max %.1f".format(it) }
-        ?: "Max %.1f".format(maxDbfs)
     Column(
         modifier = modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
@@ -141,10 +145,14 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
         Text(big, style = MaterialTheme.typography.displayLarge)
         Text(caption, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
         if (maxDbfs > -160f) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(maxLine, style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = { AudioEngine.nativeResetMax(); maxDbfs = -160f }) { Text("Reset") }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(statText("Max", maxDbfs, cal), style = MaterialTheme.typography.titleMedium)
+                Text(statText("Min", minDbfs, cal), style = MaterialTheme.typography.titleMedium)
+                Text(statText("Leq", leqDbfs, cal), style = MaterialTheme.typography.titleMedium)
             }
+            TextButton(onClick = {
+                AudioEngine.nativeResetStats(); maxDbfs = -160f; minDbfs = 200f; leqDbfs = -160f
+            }) { Text("Reset") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = { weightingA = true }, enabled = !weightingA) { Text("A") }
@@ -173,6 +181,10 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
         )
     }
 }
+
+/** "<name> <value>" for a stat line, in dB SPL when calibrated else raw dBFS. */
+private fun statText(name: String, dbfs: Float, cal: Calibration): String =
+    "$name %.1f".format(cal.splFromDbfs(dbfs) ?: dbfs)
 
 /** Big readout + caption for the current calibration + measurement. */
 private fun readout(cal: Calibration, dbfs: Float, over: Boolean, weightingA: Boolean, fast: Boolean): Pair<String, String> {
