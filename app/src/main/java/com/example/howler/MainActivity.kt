@@ -26,6 +26,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -88,7 +89,7 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
     var leqDbfs by remember { mutableFloatStateOf(-160f) }
     var over by remember { mutableStateOf(false) }
     var started by remember { mutableStateOf(true) }
-    var weightingA by rememberSaveable { mutableStateOf(true) }  // A is the SLM default
+    var weighting by rememberSaveable { mutableIntStateOf(AudioEngine.WEIGHTING_A) }  // A is the SLM default
     var fast by rememberSaveable { mutableStateOf(true) }        // Fast (125 ms) default
     // Tier-1 device sensitivity intentionally not auto-trusted (see Calibration.kt);
     // resolver uses the stored manual point or stays uncalibrated.
@@ -117,22 +118,24 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
         }
     }
     LaunchedEffect(fast) { AudioEngine.nativeSetFast(fast) }
-    // Stat units depend on weighting + time response — clear them when either changes.
-    LaunchedEffect(weightingA, fast) {
+    LaunchedEffect(weighting) { AudioEngine.nativeSetWeighting(weighting) }
+    // Stat units depend on weighting + time response — clear the displayed values
+    // when either changes (the engine resets its own stats on the same triggers).
+    LaunchedEffect(weighting, fast) {
         AudioEngine.nativeResetStats(); maxDbfs = -160f; minDbfs = 200f; leqDbfs = -160f
     }
-    LaunchedEffect(started, weightingA) {
+    LaunchedEffect(started) {
         while (started) {
-            dbfs = if (weightingA) AudioEngine.nativeLevelDbfsA() else AudioEngine.nativeLevelDbfs()
-            maxDbfs = if (weightingA) AudioEngine.nativeMaxDbfsA() else AudioEngine.nativeMaxDbfs()
-            minDbfs = if (weightingA) AudioEngine.nativeMinDbfsA() else AudioEngine.nativeMinDbfs()
-            leqDbfs = if (weightingA) AudioEngine.nativeLeqDbfsA() else AudioEngine.nativeLeqDbfs()
+            dbfs = AudioEngine.nativeLevelDbfs()
+            maxDbfs = AudioEngine.nativeMaxDbfs()
+            minDbfs = AudioEngine.nativeMinDbfs()
+            leqDbfs = AudioEngine.nativeLeqDbfs()
             over = AudioEngine.nativeOverRange()
             delay(50)
         }
     }
 
-    val (big, caption) = readout(cal, dbfs, over, weightingA, fast)
+    val (big, caption) = readout(cal, dbfs, over, weighting, fast)
     Column(
         modifier = modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
@@ -155,8 +158,9 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
             }) { Text("Reset") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { weightingA = true }, enabled = !weightingA) { Text("A") }
-            TextButton(onClick = { weightingA = false }, enabled = weightingA) { Text("Z") }
+            TextButton(onClick = { weighting = AudioEngine.WEIGHTING_A }, enabled = weighting != AudioEngine.WEIGHTING_A) { Text("A") }
+            TextButton(onClick = { weighting = AudioEngine.WEIGHTING_C }, enabled = weighting != AudioEngine.WEIGHTING_C) { Text("C") }
+            TextButton(onClick = { weighting = AudioEngine.WEIGHTING_Z }, enabled = weighting != AudioEngine.WEIGHTING_Z) { Text("Z") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = { fast = true }, enabled = !fast) { Text("Fast") }
@@ -187,9 +191,13 @@ private fun statText(name: String, dbfs: Float, cal: Calibration): String =
     "$name %.1f".format(cal.splFromDbfs(dbfs) ?: dbfs)
 
 /** Big readout + caption for the current calibration + measurement. */
-private fun readout(cal: Calibration, dbfs: Float, over: Boolean, weightingA: Boolean, fast: Boolean): Pair<String, String> {
+private fun readout(cal: Calibration, dbfs: Float, over: Boolean, weighting: Int, fast: Boolean): Pair<String, String> {
     if (over) return "OVER" to "over-range — source exceeds full scale, reading invalid"
-    val w = if (weightingA) "A" else "Z"
+    val w = when (weighting) {
+        AudioEngine.WEIGHTING_A -> "A"
+        AudioEngine.WEIGHTING_C -> "C"
+        else -> "Z"
+    }
     val t = if (fast) "F" else "S"
     return when (val spl = cal.splFromDbfs(dbfs)) {
         null -> "%.1f".format(dbfs) to "dBFS($w$t) · uncalibrated (relative only)"

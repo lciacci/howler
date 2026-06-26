@@ -24,11 +24,11 @@ constexpr float kOverThreshold = 0.999f;  // |sample| at/over full scale → cli
 constexpr float kFloorDbfs = -160.0f;     // silence floor
 constexpr float kMinSentinel = 200.0f;    // Min-hold "no reading yet" (above any real dB)
 
-// A-weighting (IEC 61672). Three biquads in cascade, coefficients derived at
-// init by bilinear transform of the analog prototype — no magic numbers, only
-// the four standard corner frequencies. Run in double precision (the 20.6 Hz
-// pole sits very close to z=1 at 48 kHz). Cascade gain normalized to 0 dB at
-// 1 kHz numerically, so we never hand-carry the A1000 constant.
+// Frequency weighting (IEC 61672). A biquad cascade whose coefficients are
+// derived at init by bilinear transform of the analog prototype — no magic
+// numbers, only the standard corner frequencies. Run in double precision (the
+// 20.6 Hz pole sits very close to z=1 at 48 kHz). Cascade gain normalized to
+// 0 dB at 1 kHz numerically, so we never hand-carry the A1000/C1000 constant.
 struct Biquad {
     double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0;  // a0 normalized to 1
     double z1 = 0, z2 = 0;                           // DF2-transposed state
@@ -62,36 +62,54 @@ Biquad bilinear(double nb2, double nb1, double nb0, double da1, double da0, doub
     return {B0 / A0, B1 / A0, B2 / A0, A1 / A0, A2 / A0};
 }
 
-class AWeighting {
+class WeightingFilter {
 public:
-    void init(double fs) {
+    // A-weighting: poles {w1², w2, w3, w4²}, 4 zeros at s=0 → 3 biquads.
+    void initA(double fs) {
         constexpr double kTwoPi = 6.283185307179586;
         const double w1 = kTwoPi * 20.598997;
         const double w2 = kTwoPi * 107.65265;
         const double w3 = kTwoPi * 737.86223;
         const double w4 = kTwoPi * 12194.217;
-        // 4 zeros at s=0, poles {w1²,w2,w3,w4²}; split into 3 biquads.
-        mSec[0] = bilinear(1, 0, 0, 2 * w1, w1 * w1, fs);              // s² / (s+w1)²
-        mSec[1] = bilinear(1, 0, 0, w2 + w3, w2 * w3, fs);            // s² / (s+w2)(s+w3)
-        mSec[2] = bilinear(0, 0, 1, 2 * w4, w4 * w4, fs);            // 1  / (s+w4)²
-        // Normalize cascade to unity gain at 1 kHz.
-        const double omega1k = kTwoPi * 1000.0 / fs;
-        std::complex<double> h = 1.0;
-        for (const auto &s : mSec) h *= s.responseAt(omega1k);
-        mGain = 1.0 / std::abs(h);
-        reset();
+        mSec[0] = bilinear(1, 0, 0, 2 * w1, w1 * w1, fs);   // s² / (s+w1)²
+        mSec[1] = bilinear(1, 0, 0, w2 + w3, w2 * w3, fs);  // s² / (s+w2)(s+w3)
+        mSec[2] = bilinear(0, 0, 1, 2 * w4, w4 * w4, fs);   // 1  / (s+w4)²
+        mCount = 3;
+        normalize(fs);
+    }
+
+    // C-weighting: A minus the mid-band poles {w2, w3} → poles {w1², w4²},
+    // 2 zeros at s=0 → 2 biquads. Flat through the mid-band, rolls off the
+    // extremes only.
+    void initC(double fs) {
+        constexpr double kTwoPi = 6.283185307179586;
+        const double w1 = kTwoPi * 20.598997;
+        const double w4 = kTwoPi * 12194.217;
+        mSec[0] = bilinear(1, 0, 0, 2 * w1, w1 * w1, fs);   // s² / (s+w1)²
+        mSec[1] = bilinear(0, 0, 1, 2 * w4, w4 * w4, fs);   // 1  / (s+w4)²
+        mCount = 2;
+        normalize(fs);
     }
 
     double process(double x) {
         double y = x * mGain;
-        for (auto &s : mSec) y = s.process(y);
+        for (int i = 0; i < mCount; ++i) y = mSec[i].process(y);
         return y;
     }
 
-    void reset() { for (auto &s : mSec) s.reset(); }
+    void reset() { for (int i = 0; i < mCount; ++i) mSec[i].reset(); }
 
 private:
+    void normalize(double fs) {  // unity gain at 1 kHz
+        const double omega1k = 6.283185307179586 * 1000.0 / fs;
+        std::complex<double> h = 1.0;
+        for (int i = 0; i < mCount; ++i) h *= mSec[i].responseAt(omega1k);
+        mGain = 1.0 / std::abs(h);
+        reset();
+    }
+
     Biquad mSec[3];
+    int mCount = 0;
     double mGain = 1.0;
 };
 
@@ -105,47 +123,43 @@ public:
         // IEC 61672 exponential time-weighting: one-pole smoother on the
         // mean-square with k = 1 - exp(-1/(fs·τ)). Fast τ=125 ms, Slow τ=1 s.
         const double k = mFast.load() ? mKFast : mKSlow;
+        const int wt = mWeighting.load();  // 0=Z (flat), 1=A, 2=C
         bool over = false;
-        double blockSumZ = 0.0, blockSumA = 0.0;
+        double blockSum = 0.0;
         for (int32_t i = 0; i < numFrames; ++i) {
             const float s = samples[i];
-            const double a = mWeightA.process(s);  // stateful — run every sample
-            const double sq = static_cast<double>(s) * s;
-            const double aq = a * a;
-            blockSumZ += sq;
-            blockSumA += aq;
-            mLeqSumZ += sq;  // unweighted energy sum, for Leq
-            mLeqSumA += aq;
-            if (mPrimed) { mMsZ += (sq - mMsZ) * k; mMsA += (aq - mMsA) * k; }
+            // Apply the active weighting only. The inactive filters' state is
+            // reset on a weighting switch (clearStats), so no need to run them.
+            const double w = wt == 1 ? mWeightA.process(s)
+                           : wt == 2 ? mWeightC.process(s)
+                                     : static_cast<double>(s);
+            const double wq = w * w;
+            blockSum += wq;
+            mLeqSum += wq;  // energy sum, for Leq
+            if (mPrimed) mMs += (wq - mMs) * k;
             if (std::fabs(s) >= kOverThreshold) over = true;  // clip detect on raw signal
         }
         // Prime the smoother to the first block's mean-square, not a single
         // sample (a sample near a zero-crossing reads ~floor and, with Slow's
         // tiny coefficient, would never recover — corrupting Min-hold).
         if (!mPrimed && numFrames > 0) {
-            mMsZ = blockSumZ / numFrames;
-            mMsA = blockSumA / numFrames;
+            mMs = blockSum / numFrames;
             mPrimed = true;
         }
         mLeqCount += numFrames;
-        const float levelZ = msToDbfs(mMsZ);
-        const float levelA = msToDbfs(mMsA);
-        mLevelDbfs.store(levelZ);
-        mLevelDbfsA.store(levelA);
+        const float level = msToDbfs(mMs);
+        mLevelDbfs.store(level);
         mOverRange.store(over);
         // Max-hold: peak of the time-weighted level. A clipped block reads HIGH
         // (samples pinned near full scale) — exactly the loud events the peak
         // exists to catch — so it is included, not skipped; the value is a lower
         // bound on the true (clipped) peak.
-        if (levelZ > mMaxDbfs.load()) mMaxDbfs.store(levelZ);
-        if (levelA > mMaxDbfsA.load()) mMaxDbfsA.store(levelA);
+        if (level > mMaxDbfs.load()) mMaxDbfs.store(level);
         // Min-hold: quietest time-weighted level since reset.
-        if (levelZ < mMinDbfs.load()) mMinDbfs.store(levelZ);
-        if (levelA < mMinDbfsA.load()) mMinDbfsA.store(levelA);
+        if (level < mMinDbfs.load()) mMinDbfs.store(level);
         // Leq: equivalent continuous level = 10·log10(mean energy since reset).
         // Independent of Fast/Slow (raw energy average, no smoothing).
-        mLeqDbfs.store(msToDbfs(mLeqSumZ / mLeqCount));
-        mLeqDbfsA.store(msToDbfs(mLeqSumA / mLeqCount));
+        mLeqDbfs.store(msToDbfs(mLeqSum / mLeqCount));
         return DataCallbackResult::Continue;
     }
 
@@ -154,18 +168,18 @@ public:
         return ms > 1e-18 ? static_cast<float>(10.0 * std::log10(ms)) : kFloorDbfs;
     }
 
-    // Clear all since-reset statistics + smoother state. Audio thread only.
+    // Clear all since-reset statistics, smoother, and filter state. Audio
+    // thread only. Resetting both filters lets a weighting switch start clean.
     void clearStats() {
-        mMsZ = mMsA = 0.0;
+        mWeightA.reset();
+        mWeightC.reset();
+        mMs = 0.0;
         mPrimed = false;
-        mLeqSumZ = mLeqSumA = 0.0;
+        mLeqSum = 0.0;
         mLeqCount = 0;
         mMaxDbfs.store(kFloorDbfs);
-        mMaxDbfsA.store(kFloorDbfs);
         mMinDbfs.store(kMinSentinel);
-        mMinDbfsA.store(kMinSentinel);
         mLeqDbfs.store(kFloorDbfs);
-        mLeqDbfsA.store(kFloorDbfs);
     }
 
     bool start() {
@@ -190,7 +204,8 @@ public:
         // (Max/Min/Leq) and the smoother are NOT reset here: they must survive a
         // lifecycle stop/restart; only the UI/config resets them.
         const double fs = mStream->getSampleRate();
-        mWeightA.init(fs);
+        mWeightA.initA(fs);
+        mWeightC.initC(fs);
         mKFast = 1.0 - std::exp(-1.0 / (fs * 0.125));
         mKSlow = 1.0 - std::exp(-1.0 / (fs * 1.000));
         result = mStream->requestStart();
@@ -212,40 +227,34 @@ public:
             mStream.reset();
         }
         mLevelDbfs.store(kFloorDbfs);
-        mLevelDbfsA.store(kFloorDbfs);
         mOverRange.store(false);
     }
 
     float levelDbfs() const { return mLevelDbfs.load(); }
-    float levelDbfsA() const { return mLevelDbfsA.load(); }
     float maxDbfs() const { return mMaxDbfs.load(); }
-    float maxDbfsA() const { return mMaxDbfsA.load(); }
     float minDbfs() const { return mMinDbfs.load(); }
-    float minDbfsA() const { return mMinDbfsA.load(); }
     float leqDbfs() const { return mLeqDbfs.load(); }
-    float leqDbfsA() const { return mLeqDbfsA.load(); }
     bool overRange() const { return mOverRange.load(); }
     void setFast(bool fast) { mFast.store(fast); }
+    // 0=Z (flat), 1=A, 2=C. Switching resets stats (units change).
+    void setWeighting(int w) { mWeighting.store(w); mResetRequested.store(true); }
     void resetStats() { mResetRequested.store(true); }  // applied on the audio thread
 
 private:
     std::shared_ptr<AudioStream> mStream;
-    AWeighting mWeightA;
-    double mMsZ = 0.0, mMsA = 0.0;       // smoothed mean-square (audio thread only)
+    WeightingFilter mWeightA, mWeightC;
+    double mMs = 0.0;                    // smoothed mean-square (audio thread only)
     double mKFast = 0.0, mKSlow = 0.0;   // smoothing coefficients, set in start()
     bool mPrimed = false;                // smoother seeded? (audio thread only)
-    double mLeqSumZ = 0.0, mLeqSumA = 0.0;  // energy sums since reset (audio thread only)
-    uint64_t mLeqCount = 0;                 // samples summed (audio thread only)
+    double mLeqSum = 0.0;                // energy sum since reset (audio thread only)
+    uint64_t mLeqCount = 0;             // samples summed (audio thread only)
     std::atomic<bool> mFast{true};       // Fast (125 ms) is the default
+    std::atomic<int> mWeighting{1};      // A is the default
     std::atomic<bool> mResetRequested{false};
     std::atomic<float> mLevelDbfs{kFloorDbfs};
-    std::atomic<float> mLevelDbfsA{kFloorDbfs};
     std::atomic<float> mMaxDbfs{kFloorDbfs};
-    std::atomic<float> mMaxDbfsA{kFloorDbfs};
     std::atomic<float> mMinDbfs{kMinSentinel};
-    std::atomic<float> mMinDbfsA{kMinSentinel};
     std::atomic<float> mLeqDbfs{kFloorDbfs};
-    std::atomic<float> mLeqDbfsA{kFloorDbfs};
     std::atomic<bool> mOverRange{false};
 };
 
@@ -270,11 +279,6 @@ Java_com_example_howler_audio_AudioEngine_nativeLevelDbfs(JNIEnv *, jobject) {
     return gEngine.levelDbfs();
 }
 
-JNIEXPORT jfloat JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeLevelDbfsA(JNIEnv *, jobject) {
-    return gEngine.levelDbfsA();
-}
-
 JNIEXPORT jboolean JNICALL
 Java_com_example_howler_audio_AudioEngine_nativeOverRange(JNIEnv *, jobject) {
     return gEngine.overRange() ? JNI_TRUE : JNI_FALSE;
@@ -285,14 +289,14 @@ Java_com_example_howler_audio_AudioEngine_nativeSetFast(JNIEnv *, jobject, jbool
     gEngine.setFast(fast == JNI_TRUE);
 }
 
-JNIEXPORT jfloat JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeMaxDbfs(JNIEnv *, jobject) {
-    return gEngine.maxDbfs();
+JNIEXPORT void JNICALL
+Java_com_example_howler_audio_AudioEngine_nativeSetWeighting(JNIEnv *, jobject, jint w) {
+    gEngine.setWeighting(w);
 }
 
 JNIEXPORT jfloat JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeMaxDbfsA(JNIEnv *, jobject) {
-    return gEngine.maxDbfsA();
+Java_com_example_howler_audio_AudioEngine_nativeMaxDbfs(JNIEnv *, jobject) {
+    return gEngine.maxDbfs();
 }
 
 JNIEXPORT jfloat JNICALL
@@ -301,18 +305,8 @@ Java_com_example_howler_audio_AudioEngine_nativeMinDbfs(JNIEnv *, jobject) {
 }
 
 JNIEXPORT jfloat JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeMinDbfsA(JNIEnv *, jobject) {
-    return gEngine.minDbfsA();
-}
-
-JNIEXPORT jfloat JNICALL
 Java_com_example_howler_audio_AudioEngine_nativeLeqDbfs(JNIEnv *, jobject) {
     return gEngine.leqDbfs();
-}
-
-JNIEXPORT jfloat JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeLeqDbfsA(JNIEnv *, jobject) {
-    return gEngine.leqDbfsA();
 }
 
 JNIEXPORT void JNICALL

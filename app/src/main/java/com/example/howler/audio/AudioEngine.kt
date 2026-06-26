@@ -2,21 +2,24 @@ package com.example.howler.audio
 
 /**
  * Kotlin bridge to the native Oboe input engine (src/main/cpp/audio_engine.cpp).
- * Uncalibrated: returns relative dBFS. SPL calibration is applied upstream.
+ * The engine computes one active frequency weighting at a time (see [setWeighting]);
+ * all levels are dBFS. SPL calibration is applied upstream.
  */
 object AudioEngine {
     init { System.loadLibrary("howler_audio") }
+
+    /** Weighting codes passed to [nativeSetWeighting]. */
+    const val WEIGHTING_Z = 0
+    const val WEIGHTING_A = 1
+    const val WEIGHTING_C = 2
 
     /** Opens + starts the unprocessed input stream. Requires RECORD_AUDIO. */
     external fun nativeStart(): Boolean
 
     external fun nativeStop()
 
-    /** Most recent block RMS level in dBFS, flat/Z-weighted (≤ 0; ~-160 at silence). */
+    /** Most recent time-weighted level in dBFS, active weighting (≤ 0; ~-160 at silence). */
     external fun nativeLevelDbfs(): Float
-
-    /** Most recent block RMS level in dBFS, A-weighted (IEC 61672). */
-    external fun nativeLevelDbfsA(): Float
 
     /** True if the last block hit/exceeded full scale (clipping → reading is low). */
     external fun nativeOverRange(): Boolean
@@ -24,24 +27,18 @@ object AudioEngine {
     /** Time-weighting: true = Fast (125 ms), false = Slow (1 s). IEC 61672. */
     external fun nativeSetFast(fast: Boolean)
 
-    /** Running peak of the time-weighted level since last reset, flat/Z-weighted. */
+    /** Active frequency weighting: [WEIGHTING_Z]/[WEIGHTING_A]/[WEIGHTING_C]. Resets stats. */
+    external fun nativeSetWeighting(weighting: Int)
+
+    /** Running peak of the time-weighted level since last reset. */
     external fun nativeMaxDbfs(): Float
 
-    /** Running peak of the time-weighted level since last reset, A-weighted. */
-    external fun nativeMaxDbfsA(): Float
-
-    /** Running minimum of the time-weighted level since last reset, flat/Z-weighted. */
+    /** Running minimum of the time-weighted level since last reset. */
     external fun nativeMinDbfs(): Float
 
-    /** Running minimum of the time-weighted level since last reset, A-weighted. */
-    external fun nativeMinDbfsA(): Float
-
-    /** Equivalent continuous level (Leq) since last reset, flat/Z-weighted. */
+    /** Equivalent continuous level (Leq) since last reset. */
     external fun nativeLeqDbfs(): Float
 
-    /** Equivalent continuous level (Leq) since last reset, A-weighted. */
-    external fun nativeLeqDbfsA(): Float
-
-    /** Clear all since-reset stats (max, min, Leq), both weightings. */
+    /** Clear all since-reset stats (max, min, Leq). */
     external fun nativeResetStats()
 }

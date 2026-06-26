@@ -50,4 +50,24 @@ class AWeightingTest {
     @Test fun unityAtOneKilohertz() {
         assertEquals(0.0, aWeightDb(1000.0), 0.05)
     }
+
+    /** Analog C-weighting attenuation in dB — A minus the mid-band poles f2,f3. */
+    private fun cWeightDb(f: Double): Double {
+        val f2sq = f * f
+        val rc = (f4 * f4 * f2sq) / ((f2sq + f1 * f1) * (f2sq + f4 * f4))
+        return 20.0 * log10(rc) + 0.06  // +0.06 normalizes to 0 dB at 1 kHz
+    }
+
+    @Test fun cWeightingMatchesIecReferenceTable() {
+        // IEC 61672-1 nominal C-weighting values (dB) at standard frequencies.
+        val reference = mapOf(
+            31.5 to -3.0,
+            1000.0 to 0.0,
+            8000.0 to -3.0,
+            12500.0 to -6.2,
+        )
+        for ((freq, expected) in reference) {
+            assertEquals("C-weighting at $freq Hz", expected, cWeightDb(freq), 0.2)
+        }
+    }
 }
