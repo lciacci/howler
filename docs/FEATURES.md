@@ -60,14 +60,33 @@ UI is functional but unstyled — the next work item. iOS not started.
 
 ---
 
-## Deferred to the UI pass
+## UI
 
-| Item | Note |
-|------|------|
-| **UI / layout redesign** | Current screen is a bare centered number + greyed-button toggles + stats row. Needs a chosen visual direction (minimal vs gauge/zones). |
-| **Mic-busy error / retry state** | If another app holds the mic on resume, the meter shows a bare "failed to open" with no recovery. Needs a retry / recoverable state. _(review finding #6)_ |
-| **Clipped-Max flag** | Max captures clipped blocks but doesn't visually mark them as "≥, clipped". |
-| **Toggle affordance** | A/C/Z and Fast/Slow use enabled/disabled TextButtons (active reads as greyed). Replace with a real segmented control. |
+CRT amber-phosphor meter screen per `design/howler-ui-spec.md`:
+
+- Layered screen — howler head + reactive edge-glow behind, content over, 3px
+  scanline overlay on top.
+- **Howler head** (extracted from the comp SVG) drawn dim/constant, with an
+  opaque black silhouette masking the glow so only a backlight halo spills past
+  the edges (the face never glows).
+- **Reactive edge-glow** — the one channel that moves with sound; alpha + blur
+  spread driven by `smoothstep(50, 88, level)`. RenderEffect blur on API 31+,
+  pre-blurred glow-ring asset below. Verified live at 97 dB(A).
+- **DSEG7 Classic** LED segment font for the hero readout, sized large and
+  adaptive by glyph count.
+- **Segmented controls** A|C|Z and FAST|SLOW (active reads brighter, not greyed).
+- **OVER** indicator — the lone red, lit on clip.
+- **Clipped-Max flag** — Max carries a red `≥` when the peak came from a clipped
+  block (true level higher).
+- **Mic-busy retry** — recoverable `INPUT UNAVAILABLE` screen with a RETRY button
+  instead of a dead error.
+- Tap the calibration caption to (re)calibrate.
+
+All verified on Pixel 10 Pro XL (clip states via forced-test — true clip needs
+~126 dB acoustic).
+
+Still open: LED "ghost" unlit segments (dim 8.8.8 backing), and any further
+visual tuning.
 
 ---
 
