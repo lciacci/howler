@@ -71,11 +71,17 @@ Requires the `mnemos` CLI on PATH (pip-installed globally). Hooks degrade gracef
 
 ## Commands
 
-> **Toolchain not yet installed.** No JDK / Android SDK / Gradle / Android Studio on this machine
-> as of scaffold. The app skeleton comes from Android Studio's New Project wizard once installed;
-> these commands work after that.
+Toolchain **is** installed, but nothing is on PATH and the system `java` is 8 (too old for
+AGP). Export these every session (see `docs/HANDOFF.md` for the full dev/verify loop):
 
-- `./gradlew assembleDebug` — build debug APK
-- `./gradlew test` — unit tests
-- `./gradlew connectedAndroidTest` — instrumented tests (needs a device/emulator)
-- `adb devices` / `adb install` — device interaction
+```sh
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"  # JDK 17, not system java 8
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+ADB="$ANDROID_HOME/platform-tools/adb"   # adb is not on PATH
+```
+
+- `./gradlew :app:assembleDebug` — build debug APK
+- `./gradlew :app:testDebugUnitTest` — JVM unit tests
+- `./gradlew :app:connectedAndroidTest` — instrumented tests (needs a device/emulator)
+- `$ADB install -r app/build/outputs/apk/debug/app-debug.apk` — install to the Pixel
+- `$ADB exec-out screencap -p > shot.png` — screenshot for on-device verify
