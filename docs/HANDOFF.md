@@ -14,7 +14,12 @@ stuff git alone won't tell you.
   readout, segmented controls, OVER/clipped-Max/mic-busy states, phosphor dialog.
 - All verified on a physical **Pixel 10 Pro XL** (API 36).
 
-Next work is project-level, not UI: **iOS via KMP** (the original "after the app"
+**Play Store submission in flight.** `docs/howler-play-listing.md` (listing copy
++ questionnaire answers) and `docs/howler-privacy-policy.md` (no-data-collected
+policy) are drafted. Still TODO: fill the `[bracketed]` placeholders (effective
+date, support email), and capture store screenshots.
+
+Other work is project-level, not UI: **iOS via KMP** (the original "after the app"
 goal), or a parked out-of-v1 extra (history graph, dose, Ln percentiles, octave
 bands, export).
 
@@ -70,8 +75,11 @@ $ADB exec-out screencap -p > shot.png      # then Read shot.png
 - JNI bridge: `app/src/main/java/com/example/howler/audio/AudioEngine.kt`.
 - UI + state: `app/src/main/java/com/example/howler/MainActivity.kt`.
 - Phosphor palette: `ui/theme/Color.kt`. LED font + license: `res/font/`, `assets/`.
-- Head/glow assets: `res/drawable-nodpi/howler_{head,glow}.png` (extracted from
-  the comp SVG in `design/`).
+- Head/glow assets: `res/drawable-nodpi/howler_{head,glow}.png`. Current art is a
+  roaring head dropped in as PNGs directly (the earlier `design/` SVG comp is no
+  longer the source). On API 31+ the head PNG drives the glow, black mask, and
+  phosphor face via `SrcIn`, so swapping the head needs no code change; `howler_glow.png`
+  is only the API<31 pre-blurred fallback. Same 900x1209 dims keep `HEAD_RATIO` valid.
 - Weighting spec-guard test: `app/src/test/.../AWeightingTest.kt` (asserts the A
   and C analog response vs the IEC 61672 tables — the native filter can't run
   host-side, so this guards the corner-frequency constants).
