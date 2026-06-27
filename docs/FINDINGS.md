@@ -49,3 +49,20 @@ literal. Candidate for a reusable `tessera` migration skill rather than per-proj
 
 **Confirmed working.** Mnemos `.mnemos/` is path-relative and restored cleanly with no slug
 issue — validates the export's split design (repo-relative state vs path-slug state).
+
+---
+
+## F-003 — Downstream statusline scripts diverge from Tessera source
+
+**Surfaced:** 2026-06-27, after tier-advisory patch landed in tessera but not howler.
+
+**What happened.** `mnemos-statusline.sh` is scaffolded into every downstream project at init time. When Tessera patches its own copy (e.g. tier-flag feature), downstream copies don't get the update — they're inert copies with no sync mechanism. Discovered when tier `⚑tier:` flag appeared in Tessera session but not Howler.
+
+**Immediate fix.** Manually copied `tessera/.claude/scripts/mnemos-statusline.sh` → `howler/.claude/scripts/mnemos-statusline.sh`.
+
+**Framework-level gap.** Tessera has no mechanism to propagate script changes to downstream projects. Options:
+1. Symlink `mnemos-statusline.sh` back to a Tessera-owned source (requires tessera checkout at a stable path — fragile)
+2. A `tessera sync-scripts` command that diffs + patches known downstream files
+3. Accept divergence; document "run tessera sync after framework script changes"
+
+**When to fix in Tessera.** When a second downstream project exists (iOS/KMP) or when this manual copy step happens a third time.

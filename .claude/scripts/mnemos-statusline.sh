@@ -56,26 +56,43 @@ with open('.mnemos/fatigue.json', 'w') as f:
     json.dump(fatigue, f)
 "
 
+# ─── Step 1b: Tier advisory suffix (show only when qwen's tier != current model) ───
+# Reads routing-cache.json (written by tier-classify-hook each prompt) and the
+# current model from stdin. User-visible channel so the advisory no longer
+# depends on the main thread remembering to surface it.
+
+SUFFIX=""
+CACHE="$HOME/.claude/routing-cache.json"
+if [ -f "$CACHE" ]; then
+    TIER_MODEL=$(jq -r '.tier // ""' "$CACHE" 2>/dev/null | sed 's/CLAUDE_//' | tr '[:upper:]' '[:lower:]')
+    CUR_MODEL=$(echo "$INPUT" | jq -r '.model.id // ""' 2>/dev/null | grep -oE 'opus|sonnet|haiku' | head -1)
+    if [ -n "$TIER_MODEL" ] && [ -n "$CUR_MODEL" ] && [ "$TIER_MODEL" != "$CUR_MODEL" ]; then
+        SUFFIX="⚑tier:${TIER_MODEL} "
+    fi
+fi
+
 # ─── Step 2: Display — prefer ccusage, fallback to simple ───
 
 if command -v ccusage &>/dev/null; then
     # ccusage statusline gets the same JSON, shows cost + context + burn rate
-    echo "$INPUT" | ccusage statusline 2>/dev/null
-    if [ $? -eq 0 ]; then
+    OUT=$(echo "$INPUT" | ccusage statusline 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$OUT" ]; then
+        printf '%s%s\n' "$SUFFIX" "$OUT"
         exit 0
     fi
 fi
 
 # Try npx ccusage (slower, only if ccusage not globally installed)
 if command -v npx &>/dev/null; then
-    echo "$INPUT" | npx --yes ccusage statusline 2>/dev/null
-    if [ $? -eq 0 ]; then
+    OUT=$(echo "$INPUT" | npx --yes ccusage statusline 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$OUT" ]; then
+        printf '%s%s\n' "$SUFFIX" "$OUT"
         exit 0
     fi
 fi
 
 # Fallback: simple context display
-python3 -c "
+OUT=$(python3 -c "
 import json
 try:
     data = json.loads('''$(echo "$INPUT" | sed "s/'/'\\\\''/g")''')
@@ -89,6 +106,7 @@ try:
     print(f'Ctx:{used:.0f}%{s}')
 except:
     print('Ctx:?%')
-"
+")
+printf '%s%s\n' "$SUFFIX" "$OUT"
 
 exit 0
