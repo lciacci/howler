@@ -2,7 +2,9 @@ package com.example.howler
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -114,6 +116,8 @@ private fun hasMicPermission(context: Context): Boolean =
 private fun MeterScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val store = remember { CalibrationStore(context) }
+    val prefs = remember { context.getSharedPreferences("howler_prefs", Context.MODE_PRIVATE) }
+    var showFirstRun by remember { mutableStateOf(!prefs.getBoolean("first_run_seen", false)) }
     var dbfs by remember { mutableFloatStateOf(-160f) }
     var maxDbfs by remember { mutableFloatStateOf(-160f) }
     var maxClipped by remember { mutableStateOf(false) }
@@ -222,6 +226,20 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
             }
         }
         ScanlineOverlay(Modifier.fillMaxSize())
+    }
+
+    if (showFirstRun) {
+        FirstRunDialog(
+            onDismiss = {
+                prefs.edit().putBoolean("first_run_seen", true).apply()
+                showFirstRun = false
+            },
+            onLearnMore = {
+                prefs.edit().putBoolean("first_run_seen", true).apply()
+                showFirstRun = false
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://houseofyeti.com/howler/")))
+            },
+        )
     }
 
     if (showDialog) {
@@ -396,6 +414,40 @@ private fun ScanlineOverlay(modifier: Modifier = Modifier) {
             y += pitch
         }
     }
+}
+
+@Composable
+private fun FirstRunDialog(onDismiss: () -> Unit, onLearnMore: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Phosphor.screen,
+        title = {
+            Text("BEFORE YOU MEASURE", color = Phosphor.readout,
+                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Accuracy depends on your device's microphone. Without calibration, readings reflect relative changes reliably — but absolute levels can be 10–15 dB off.",
+                    color = Phosphor.labelBright, fontFamily = FontFamily.Monospace, fontSize = 13.sp,
+                )
+                Text(
+                    "Tap the label at the bottom of the screen to calibrate against a reference source.",
+                    color = Phosphor.labelBright, fontFamily = FontFamily.Monospace, fontSize = 13.sp,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("GOT IT", color = Phosphor.readout, fontFamily = FontFamily.Monospace)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onLearnMore) {
+                Text("LEARN MORE", color = Phosphor.caption, fontFamily = FontFamily.Monospace)
+            }
+        },
+    )
 }
 
 @Composable
