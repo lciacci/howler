@@ -1,4 +1,4 @@
-package com.example.howler.audio
+package com.houseofyeti.howler.audio
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

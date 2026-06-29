@@ -1,4 +1,4 @@
-package com.example.howler.audio
+package com.houseofyeti.howler.audio
 
 /**
  * Kotlin bridge to the native Oboe input engine (src/main/cpp/audio_engine.cpp).

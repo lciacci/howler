@@ -1,4 +1,4 @@
-package com.example.howler
+package com.houseofyeti.howler
 
 import org.junit.Test
 

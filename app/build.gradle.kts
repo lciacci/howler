@@ -1,10 +1,17 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
 
+val keystoreProps = Properties().also { props ->
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) props.load(f.inputStream())
+}
+
 android {
-    namespace = "com.example.howler"
+    namespace = "com.houseofyeti.howler"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -12,7 +19,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.howler"
+        applicationId = "com.houseofyeti.howler"
         minSdk = 29
         targetSdk = 36
         versionCode = 1
@@ -32,8 +39,18 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile     = keystoreProps["storeFile"]?.let { file(it as String) }
+            storePassword = keystoreProps["storePassword"] as String?
+            keyAlias      = keystoreProps["keyAlias"] as String?
+            keyPassword   = keystoreProps["keyPassword"] as String?
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = false
             }

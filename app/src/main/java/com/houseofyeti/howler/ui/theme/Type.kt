@@ -1,4 +1,4 @@
-package com.example.howler.ui.theme
+package com.houseofyeti.howler.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle

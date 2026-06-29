@@ -1,4 +1,4 @@
-package com.example.howler.audio
+package com.houseofyeti.howler.audio
 
 import android.media.AudioFormat
 import android.media.AudioRecord

@@ -1,4 +1,4 @@
-package com.example.howler.audio
+package com.houseofyeti.howler.audio
 
 /**
  * STEP ZERO device probe — see docs/howler-calibration-design.md.

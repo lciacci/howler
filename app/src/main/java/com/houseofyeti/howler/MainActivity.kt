@@ -1,4 +1,4 @@
-package com.example.howler
+package com.houseofyeti.howler
 
 import android.Manifest
 import android.content.Context
@@ -65,17 +65,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.example.howler.R
-import com.example.howler.ui.theme.Phosphor
+import com.houseofyeti.howler.R
+import com.houseofyeti.howler.ui.theme.Phosphor
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.example.howler.audio.AudioEngine
-import com.example.howler.audio.Calibration
-import com.example.howler.audio.CalibrationStore
-import com.example.howler.audio.manualOffset
-import com.example.howler.audio.resolveCalibration
-import com.example.howler.audio.splFromDbfs
-import com.example.howler.ui.theme.HowlerTheme
+import com.houseofyeti.howler.audio.AudioEngine
+import com.houseofyeti.howler.audio.Calibration
+import com.houseofyeti.howler.audio.CalibrationStore
+import com.houseofyeti.howler.audio.manualOffset
+import com.houseofyeti.howler.audio.resolveCalibration
+import com.houseofyeti.howler.audio.splFromDbfs
+import com.houseofyeti.howler.ui.theme.HowlerTheme
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {

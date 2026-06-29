@@ -1,4 +1,4 @@
-package com.example.howler.audio
+package com.houseofyeti.howler.audio
 
 /**
  * Maps measured dBFS → estimated dB SPL. See docs/howler-calibration-design.md.

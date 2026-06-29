@@ -1,4 +1,4 @@
-package com.example.howler.ui.theme
+package com.houseofyeti.howler.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
