@@ -4,13 +4,19 @@ How to pick this repo up cold. Pair with `CLAUDE.md` (conventions) and
 `FEATURES.md` (what's built). Git is the source of truth; everything below is the
 stuff git alone won't tell you.
 
-## Status (2026-06-29)
+## Status (2026-06-30)
 
 **In closed testing on Google Play.** Alpha released Jun 29; available on
 10,637 devices. Opt-in URL visible in Play Console → Testing → Closed testing.
 
+**1.0.1 (versionCode 2) built Jun 30 — crash-on-open fix, pending upload.** A tester on
+Android 16 hit an immediate crash; root cause was the package rename (`7b0feaf`) leaving the
+C++ JNI symbols as `com_example_howler` → `UnsatisfiedLinkError` on `nativeStart()`. Fixed in
+`c7c6335` (also bumped Oboe 1.9.0→1.10.0 + 16KB-page link flag for a latent Android-16 issue).
+AAB at `app/build/outputs/bundle/release/app-release.aab` — **upload to close the loop.**
+
 - Package: `com.houseofyeti.howler`
-- Version: 1.0 (versionCode 1)
+- Version: 1.0.1 (versionCode 2)
 - Signed with upload keystore at `~/howler-upload.keystore` (keep safe — not in repo)
 - Signing config reads from `keystore.properties` (gitignored) in repo root
 
@@ -51,8 +57,8 @@ The pattern used all session — build, flash, screenshot, look:
 ```sh
 ./gradlew :app:assembleDebug :app:testDebugUnitTest
 $ADB install -r app/build/outputs/apk/debug/app-debug.apk
-$ADB shell am force-stop com.example.howler
-$ADB shell am start -n com.example.howler/.MainActivity
+$ADB shell am force-stop com.houseofyeti.howler
+$ADB shell am start -n com.houseofyeti.howler/.MainActivity
 $ADB exec-out screencap -p > shot.png      # then Read shot.png
 ```
 
@@ -83,8 +89,10 @@ $ADB exec-out screencap -p > shot.png      # then Read shot.png
 
 - Native engine + DSP: `app/src/main/cpp/audio_engine.cpp` (single active
   weighting; stats reset via an atomic flag applied on the audio thread).
-- JNI bridge: `app/src/main/java/com/example/howler/audio/AudioEngine.kt`.
-- UI + state: `app/src/main/java/com/example/howler/MainActivity.kt`.
+- JNI bridge: `app/src/main/java/com/houseofyeti/howler/audio/AudioEngine.kt`. The JNI
+  exports in `audio_engine.cpp` must mirror this package (`Java_com_houseofyeti_howler_...`) —
+  a rename that misses the C++ symbols compiles fine but crashes on open (see FINDINGS F-004).
+- UI + state: `app/src/main/java/com/houseofyeti/howler/MainActivity.kt`.
 - Phosphor palette: `ui/theme/Color.kt`. LED font + license: `res/font/`, `assets/`.
 - Head/glow assets: `res/drawable-nodpi/howler_{head,glow}.png`. Current art is a
   roaring head dropped in as PNGs directly (the earlier `design/` SVG comp is no
