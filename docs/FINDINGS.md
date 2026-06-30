@@ -66,3 +66,39 @@ issue — validates the export's split design (repo-relative state vs path-slug 
 3. Accept divergence; document "run tessera sync after framework script changes"
 
 **When to fix in Tessera.** When a second downstream project exists (iOS/KMP) or when this manual copy step happens a third time.
+
+---
+
+## F-004 — Package rename left JNI C++ symbols stale → crash on open, no build error
+
+**Surfaced:** 2026-06-30, closed tester reported Howler crashes on open (Android 16).
+
+**What happened.** Commit `7b0feaf` renamed the app package `com.example.howler` →
+`com.houseofyeti.howler` (Kotlin sources, namespace, applicationId, manifest). The native
+layer was missed: `audio_engine.cpp` still exported `Java_com_example_howler_audio_AudioEngine_*`.
+JNI resolves natives by mangled fully-qualified class name, so `nativeStart()` — invoked on the
+meter's `ON_START` lifecycle — threw `UnsatisfiedLinkError: No implementation found for ...
+nativeStart()` and the app crashed on open. **Nothing failed at build time** — the C++ compiles
+and links fine; the symbol is just orphaned. Fixed in `c7c6335` (rename all 11 JNI exports).
+
+**Why it slipped.** Two compounding gaps:
+1. No JNI smoke test. `connectedAndroidTest` exists but wasn't run post-rename; a one-line
+   instrumented `AudioEngine().nativeStart()` would have caught it. The host-side JVM tests
+   (`testDebugUnitTest`) can't — the native lib doesn't load off-device.
+2. I anchored on a wrong root cause first. The crash was on Android 16, so I jumped to the
+   16KB-page-alignment regression (real, but latent — local 4KB Pixel reproduced the crash too,
+   which should have falsified the 16KB theory immediately). Pulling the actual `logcat -b crash`
+   stack trace *before* hypothesizing would have gone straight to the JNI mismatch. **Get the
+   stack trace before theorizing about a crash.**
+
+**Dogfood angle for Tessera.** A package-rename is a cross-cutting refactor Tessera has no guard
+for. The Kotlin/manifest layer is greppable and IDE-refactorable; the native JNI layer is coupled
+by *string convention* (`Java_<mangled_fqcn>_<method>`) with no compiler link between them.
+Candidates:
+1. A `tessera` rename-checklist / lint that, for projects with an `externalNativeBuild`, greps
+   `src/main/cpp` for `Java_<old_package_mangled>_` after an applicationId/namespace change.
+2. Encourage a minimal JNI-load instrumented test in the NDK scaffold so any symbol-name drift
+   fails CI, not on a tester's device in closed testing.
+
+**When to fix in Tessera.** When the iOS/KMP work starts (KMP moves the JNI boundary again) or if
+any future rename touches native code.
