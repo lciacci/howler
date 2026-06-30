@@ -4,20 +4,31 @@ How to pick this repo up cold. Pair with `CLAUDE.md` (conventions) and
 `FEATURES.md` (what's built). Git is the source of truth; everything below is the
 stuff git alone won't tell you.
 
-## Status (2026-06-27)
+## Status (2026-06-29)
 
-**Feature-complete with a finished UI.** Everything is on `main` and pushed.
+**In closed testing on Google Play.** Alpha released Jun 29; available on
+10,637 devices. Opt-in URL visible in Play Console → Testing → Closed testing.
 
+- Package: `com.houseofyeti.howler`
+- Version: 1.0 (versionCode 1)
+- Signed with upload keystore at `~/howler-upload.keystore` (keep safe — not in repo)
+- Signing config reads from `keystore.properties` (gitignored) in repo root
+
+**What shipped:**
 - Meter: native Oboe input, unprocessed; Z/A/C weighting, Fast/Slow, Max/Min/Leq,
   OVER, tier-2 manual calibration. See `FEATURES.md`.
 - UI: CRT amber-phosphor screen — head + reactive backlight glow, DSEG7 LED
   readout, segmented controls, OVER/clipped-Max/mic-busy states, phosphor dialog.
+- First-run calibration notice dialog (SharedPreferences flag `first_run_seen`).
+- Howler dark-variant adaptive launcher icon.
 - All verified on a physical **Pixel 10 Pro XL** (API 36).
 
-**Play Store submission in flight.** `docs/howler-play-listing.md` (listing copy
-+ questionnaire answers) and `docs/howler-privacy-policy.md` (no-data-collected
-policy) are drafted. Still TODO: fill the `[bracketed]` placeholders (effective
-date, support email), and capture store screenshots.
+**Web (houseofyeti.com/howler/):**
+- `index.html` — help page (calibration first, all features covered)
+- `privacy.html` — privacy policy (effective 2026-06-27)
+- Both cross-link; privacy URL submitted to Play Console.
+
+**Next:** gather feedback from closed testers, then promote to production.
 
 Other work is project-level, not UI: **iOS via KMP** (the original "after the app"
 goal), or a parked out-of-v1 extra (history graph, dose, Ln percentiles, octave
