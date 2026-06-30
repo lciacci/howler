@@ -272,57 +272,57 @@ HowlerEngine gEngine;
 extern "C" {
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeStart(JNIEnv *, jobject) {
+Java_com_houseofyeti_howler_audio_AudioEngine_nativeStart(JNIEnv *, jobject) {
     return gEngine.start() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeStop(JNIEnv *, jobject) {
+Java_com_houseofyeti_howler_audio_AudioEngine_nativeStop(JNIEnv *, jobject) {
     gEngine.stop();
 }
 
 JNIEXPORT jfloat JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeLevelDbfs(JNIEnv *, jobject) {
+Java_com_houseofyeti_howler_audio_AudioEngine_nativeLevelDbfs(JNIEnv *, jobject) {
     return gEngine.levelDbfs();
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeOverRange(JNIEnv *, jobject) {
+Java_com_houseofyeti_howler_audio_AudioEngine_nativeOverRange(JNIEnv *, jobject) {
     return gEngine.overRange() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeSetFast(JNIEnv *, jobject, jboolean fast) {
+Java_com_houseofyeti_howler_audio_AudioEngine_nativeSetFast(JNIEnv *, jobject, jboolean fast) {
     gEngine.setFast(fast == JNI_TRUE);
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeSetWeighting(JNIEnv *, jobject, jint w) {
+Java_com_houseofyeti_howler_audio_AudioEngine_nativeSetWeighting(JNIEnv *, jobject, jint w) {
     gEngine.setWeighting(w);
 }
 
 JNIEXPORT jfloat JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeMaxDbfs(JNIEnv *, jobject) {
+Java_com_houseofyeti_howler_audio_AudioEngine_nativeMaxDbfs(JNIEnv *, jobject) {
     return gEngine.maxDbfs();
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeMaxClipped(JNIEnv *, jobject) {
+Java_com_houseofyeti_howler_audio_AudioEngine_nativeMaxClipped(JNIEnv *, jobject) {
     return gEngine.maxClipped() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jfloat JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeMinDbfs(JNIEnv *, jobject) {
+Java_com_houseofyeti_howler_audio_AudioEngine_nativeMinDbfs(JNIEnv *, jobject) {
     return gEngine.minDbfs();
 }
 
 JNIEXPORT jfloat JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeLeqDbfs(JNIEnv *, jobject) {
+Java_com_houseofyeti_howler_audio_AudioEngine_nativeLeqDbfs(JNIEnv *, jobject) {
     return gEngine.leqDbfs();
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_howler_audio_AudioEngine_nativeResetStats(JNIEnv *, jobject) {
+Java_com_houseofyeti_howler_audio_AudioEngine_nativeResetStats(JNIEnv *, jobject) {
     gEngine.resetStats();
 }
 

@@ -22,8 +22,8 @@ android {
         applicationId = "com.houseofyeti.howler"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -74,7 +74,7 @@ android {
 }
 
 dependencies {
-    implementation("com.google.oboe:oboe:1.9.0")
+    implementation("com.google.oboe:oboe:1.10.0")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
