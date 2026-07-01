@@ -4,19 +4,22 @@ How to pick this repo up cold. Pair with `CLAUDE.md` (conventions) and
 `FEATURES.md` (what's built). Git is the source of truth; everything below is the
 stuff git alone won't tell you.
 
-## Status (2026-06-30)
+## Status (2026-07-01)
 
 **In closed testing on Google Play.** Alpha released Jun 29; available on
 10,637 devices. Opt-in URL visible in Play Console → Testing → Closed testing.
 
-**1.0.1 (versionCode 2) built Jun 30 — crash-on-open fix, pending upload.** A tester on
-Android 16 hit an immediate crash; root cause was the package rename (`7b0feaf`) leaving the
-C++ JNI symbols as `com_example_howler` → `UnsatisfiedLinkError` on `nativeStart()`. Fixed in
-`c7c6335` (also bumped Oboe 1.9.0→1.10.0 + 16KB-page link flag for a latent Android-16 issue).
-AAB at `app/build/outputs/bundle/release/app-release.aab` — **upload to close the loop.**
+**1.0.2 (versionCode 3) built Jul 1 — in-app help reachable, pending upload.** The
+first-run dialog (accuracy + calibration guidance, LEARN MORE link) was only reachable once,
+on first launch — no way back to it. Added a `?` next to the OVER indicator that reopens it
+(`2538668`). AAB at `app/build/outputs/bundle/release/app-release.aab` — **upload to close the loop.**
+
+1.0.1 (versionCode 2, Jun 30) shipped the crash-on-open fix: package rename (`7b0feaf`) left the
+C++ JNI symbols as `com_example_howler` → `UnsatisfiedLinkError` on `nativeStart()`, fixed in
+`c7c6335` (also Oboe 1.9.0→1.10.0 + 16KB-page link flag). See FINDINGS F-004.
 
 - Package: `com.houseofyeti.howler`
-- Version: 1.0.1 (versionCode 2)
+- Version: 1.0.2 (versionCode 3)
 - Signed with upload keystore at `~/howler-upload.keystore` (keep safe — not in repo)
 - Signing config reads from `keystore.properties` (gitignored) in repo root
 
@@ -25,7 +28,8 @@ AAB at `app/build/outputs/bundle/release/app-release.aab` — **upload to close 
   OVER, tier-2 manual calibration. See `FEATURES.md`.
 - UI: CRT amber-phosphor screen — head + reactive backlight glow, DSEG7 LED
   readout, segmented controls, OVER/clipped-Max/mic-busy states, phosphor dialog.
-- First-run calibration notice dialog (SharedPreferences flag `first_run_seen`).
+- First-run calibration notice dialog (SharedPreferences flag `first_run_seen`),
+  reopenable anytime via the `?` by the OVER indicator.
 - Howler dark-variant adaptive launcher icon.
 - All verified on a physical **Pixel 10 Pro XL** (API 36).
 
