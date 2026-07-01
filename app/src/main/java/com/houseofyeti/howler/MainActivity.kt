@@ -195,7 +195,11 @@ private fun MeterScreen(modifier: Modifier = Modifier) {
                         listOf("A" to AudioEngine.WEIGHTING_A, "C" to AudioEngine.WEIGHTING_C, "Z" to AudioEngine.WEIGHTING_Z),
                         weighting, { weighting = it },
                     )
-                    OverIndicator(over)
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OverIndicator(over)
+                        Text("?", color = Phosphor.caption, fontFamily = FontFamily.Monospace, fontSize = 20.sp,
+                            modifier = Modifier.clickable { showFirstRun = true })
+                    }
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     val bigText = "%.1f".format(displayLevel)
