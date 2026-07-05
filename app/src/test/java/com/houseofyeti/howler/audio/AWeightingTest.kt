@@ -6,7 +6,7 @@ import kotlin.math.log10
 import kotlin.math.sqrt
 
 /**
- * Spec-guard for the native A-weighting filter (src/main/cpp/audio_engine.cpp).
+ * Spec-guard for the native A-weighting filter (src/main/cpp/meter_core.h).
  *
  * The filter runs in C++ (it needs the audio samples) and can't be unit-tested
  * here directly. What CAN go wrong without a compile error is the *definition* —
