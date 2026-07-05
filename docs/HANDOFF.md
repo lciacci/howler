@@ -62,15 +62,23 @@ we derisk the one real unknown: does the exact Android DSP run on iOS?
   copied. `test_host.cpp` proves the header ports to plain `clang++` and is numerically
   exact (Z/A −9.03 dBFS, over-range + clip flags). `MeterSpike.swift` feeds it from an
   AVAudioEngine input tap (`.measurement` mode = iOS analog of Oboe `Unprocessed`).
-- **Verified now (headless, no device):** `cd ios-spike && clang++ -std=c++17 -O2 -Wall
-  test_host.cpp meter_bridge.cpp -o /tmp/t && /tmp/t` → `PASS`. Proves the DSP is portable
-  stdlib C++; the iOS target differs only by SDK sysroot.
+- **Compiles against the real iOS SDK — done (Xcode 26.5, headless).** Both halves build
+  for `arm64-apple-ios`, no device:
+  - host numeric check: `cd ios-spike && clang++ -std=c++17 -O2 -Wall test_host.cpp
+    meter_bridge.cpp -o /tmp/t && /tmp/t` → `PASS` (Z/A −9.03 dBFS).
+  - iOS C++ compile: `SDK=$(xcrun --sdk iphoneos --show-sdk-path); xcrun --sdk iphoneos
+    clang++ -std=c++17 -target arm64-apple-ios15.0 -isysroot "$SDK" -c meter_bridge.cpp -o
+    /tmp/o` → arm64 Mach-O object.
+  - Swift tap type-check: `xcrun --sdk iphoneos swiftc -typecheck -target arm64-apple-ios15.0
+    -sdk "$SDK" -import-objc-header meter_bridge.h MeterSpike.swift` → exit 0.
 
-**Blocked on:** the on-device half. Only Command Line Tools is installed — no `iphoneos`
-SDK (`xcrun --sdk iphoneos` errors). Need **Xcode.app** (App Store). Then follow
-`ios-spike/README.md`: new iOS App project → add the 3 bridge/Swift files + a bridging
-header → `NSMicrophoneUsageDescription` in Info.plist → run on a wired phone, watch the
-console for live dB. Green run = audio risk dead; the KMP-vs-native call becomes UI-only.
+  **Toolchain + compile risk is dead.** `meter_core.h` builds unchanged for iOS; the
+  AVAudioEngine glue type-checks against the bridge.
+
+**Blocked on:** on-device mic run only (needs a wired iPhone + the GUI Xcode project). Follow
+`ios-spike/README.md`: new iOS App project → add the 3 bridge/Swift files + a bridging header
+→ `NSMicrophoneUsageDescription` in Info.plist → run on the phone, watch the console for live
+dB. Green run = audio risk fully dead; the KMP-vs-native call becomes UI-only.
 
 Parked out-of-v1 extras (unchanged): history graph, dose, Ln percentiles, octave bands, export.
 
