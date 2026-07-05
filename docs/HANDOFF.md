@@ -4,15 +4,17 @@ How to pick this repo up cold. Pair with `CLAUDE.md` (conventions) and
 `FEATURES.md` (what's built). Git is the source of truth; everything below is the
 stuff git alone won't tell you.
 
-## Status (2026-07-01)
+## Status (2026-07-05)
 
-**In closed testing on Google Play.** Alpha released Jun 29; available on
-10,637 devices. Opt-in URL visible in Play Console → Testing → Closed testing.
+**In closed testing on Google Play — 14-day clock running.** 12 testers enrolled;
+the 14-day closed-testing period (Play's gate before you can apply for production
+access) is counting down. Opt-in URL in Play Console → Testing → Closed testing.
+Nothing to ship on Android until the clock clears — then apply for production.
 
-**1.0.2 (versionCode 3) built Jul 1 — in-app help reachable, pending upload.** The
-first-run dialog (accuracy + calibration guidance, LEARN MORE link) was only reachable once,
-on first launch — no way back to it. Added a `?` next to the OVER indicator that reopens it
-(`2538668`). AAB at `app/build/outputs/bundle/release/app-release.aab` — **upload to close the loop.**
+**1.0.2 (versionCode 3) uploaded — in-app help reachable.** The first-run dialog
+(accuracy + calibration guidance, LEARN MORE link) was only reachable once, on first launch —
+no way back to it. Added a `?` next to the OVER indicator that reopens it (`2538668`).
+AAB at `app/build/outputs/bundle/release/app-release.aab`.
 
 1.0.1 (versionCode 2, Jun 30) shipped the crash-on-open fix: package rename (`7b0feaf`) left the
 C++ JNI symbols as `com_example_howler` → `UnsatisfiedLinkError` on `nativeStart()`, fixed in
@@ -38,11 +40,39 @@ C++ JNI symbols as `com_example_howler` → `UnsatisfiedLinkError` on `nativeSta
 - `privacy.html` — privacy policy (effective 2026-06-27)
 - Both cross-link; privacy URL submitted to Play Console.
 
-**Next:** gather feedback from closed testers, then promote to production.
+**Next:** gather feedback from closed testers, then promote to production once the
+14-day clock clears.
 
-Other work is project-level, not UI: **iOS via KMP** (the original "after the app"
-goal), or a parked out-of-v1 extra (history graph, dose, Ln percentiles, octave
-bands, export).
+### iOS — spike in progress (derisking the audio path)
+
+Decision on record: **don't commit to KMP yet.** Howler's shared surface is the C++
+DSP, not Kotlin — so before picking a vehicle (KMP vs shared-C++-core + native UIs)
+we derisk the one real unknown: does the exact Android DSP run on iOS?
+
+- **DSP split — done (`eb1daad`).** `audio_engine.cpp` was Oboe I/O + DSP welded
+  together. Pulled all platform-agnostic DSP (Biquad, WeightingFilter, MeterCore) into
+  `app/src/main/cpp/meter_core.h` — pure stdlib C++, zero Oboe/JNI/android headers.
+  `audio_engine.cpp` is now the Android I/O + JNI shell wrapping a `MeterCore`. JNI
+  symbols byte-identical (F-004 class avoided). No behavior change; verified live on the
+  Pixel (30.4 dB(A), Max/Min/Leq tracking). Three platform hooks carry everything:
+  `configure(fs)` / `process(samples,n)` / `onStopped()`.
+- **iOS spike scaffold — done (`9d02cb1`), in `ios-spike/`.** C-shim bridge
+  (`meter_bridge.{h,cpp}`) wraps `MeterCore` behind a flat C ABI and `#include`s
+  `meter_core.h` from the Android tree directly — one header, both platforms, nothing
+  copied. `test_host.cpp` proves the header ports to plain `clang++` and is numerically
+  exact (Z/A −9.03 dBFS, over-range + clip flags). `MeterSpike.swift` feeds it from an
+  AVAudioEngine input tap (`.measurement` mode = iOS analog of Oboe `Unprocessed`).
+- **Verified now (headless, no device):** `cd ios-spike && clang++ -std=c++17 -O2 -Wall
+  test_host.cpp meter_bridge.cpp -o /tmp/t && /tmp/t` → `PASS`. Proves the DSP is portable
+  stdlib C++; the iOS target differs only by SDK sysroot.
+
+**Blocked on:** the on-device half. Only Command Line Tools is installed — no `iphoneos`
+SDK (`xcrun --sdk iphoneos` errors). Need **Xcode.app** (App Store). Then follow
+`ios-spike/README.md`: new iOS App project → add the 3 bridge/Swift files + a bridging
+header → `NSMicrophoneUsageDescription` in Info.plist → run on a wired phone, watch the
+console for live dB. Green run = audio risk dead; the KMP-vs-native call becomes UI-only.
+
+Parked out-of-v1 extras (unchanged): history graph, dose, Ln percentiles, octave bands, export.
 
 ## Toolchain
 
