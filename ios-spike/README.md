@@ -11,7 +11,7 @@ core + native UIs): *does the exact Android DSP produce real dB on iOS?*
 |------|------|----------|
 | `meter_bridge.h/.cpp` | C ABI over `howler::MeterCore` (Swift can't call C++ classes portably) | ✅ host-compiled |
 | `test_host.cpp` | headless numeric check through the bridge | ✅ passes on macOS |
-| `MeterSpike.swift` | AVAudioEngine input tap → bridge → prints dB | ⏳ needs device + Xcode |
+| `MeterSpike.swift` | AVAudioEngine input tap → bridge → prints dB | ✅ live in iOS Simulator (Mac mic) |
 
 The bridge `#include`s `meter_core.h` from the Android tree directly — one header,
 both platforms. Nothing is copied.

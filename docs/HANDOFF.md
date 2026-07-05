@@ -75,10 +75,23 @@ we derisk the one real unknown: does the exact Android DSP run on iOS?
   **Toolchain + compile risk is dead.** `meter_core.h` builds unchanged for iOS; the
   AVAudioEngine glue type-checks against the bridge.
 
-**Blocked on:** on-device mic run only (needs a wired iPhone + the GUI Xcode project). Follow
-`ios-spike/README.md`: new iOS App project → add the 3 bridge/Swift files + a bridging header
-→ `NSMicrophoneUsageDescription` in Info.plist → run on the phone, watch the console for live
-dB. Green run = audio risk fully dead; the KMP-vs-native call becomes UI-only.
+- **Runs live in the iOS Simulator — done (Mac mic).** Wired the spike into a SwiftUI app
+  (Start button → `MeterSpike().start()`), ran in the simulator, which feeds the Mac's mic to
+  AVAudioEngine. The console tracks sound live: quiet room ~−75 dB(A), speech climbed to −21,
+  decayed back; `max`/`min`/`Leq` held correctly, `over=0` at speech levels, Stop floored the
+  live readout via `onStopped()`. The exact Android DSP runs unchanged on iOS.
+
+  **Audio risk is dead. The KMP-vs-native decision is now UI-only.**
+
+**Only remaining iOS check (optional, low-risk):** a real-device run to confirm hardware
+`.measurement`/unprocessed-input parity (the simulator uses macOS CoreAudio, not the phone's
+raw mic path). Not a blocker for the vehicle decision — the pipeline and DSP are proven. When
+wanted: `ios-spike/README.md` → same project, wired iPhone, free Apple ID signs it, trust the
+dev cert on the phone.
+
+**Next iOS decision (the real one now):** pick the vehicle — KMP (share Kotlin too, Compose
+Multiplatform for UI) vs shared-C++-core + SwiftUI. The spike shows the C++ DSP ports cleanly
+either way, so this is purely a UI-reuse call. Worth a framework-eval ADR before committing.
 
 Parked out-of-v1 extras (unchanged): history graph, dose, Ln percentiles, octave bands, export.
 
