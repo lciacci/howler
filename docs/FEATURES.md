@@ -1,15 +1,20 @@
 # Howler — feature summary
 
-A decibel meter. Android first (Kotlin + Oboe/NDK), iOS via KMP later. This file
-tracks what the app does today, what's deferred to the UI pass, and what's
-deliberately out of v1 scope.
+A decibel meter. Android first (Kotlin + Oboe/NDK); iOS via a **shared C++ DSP
+core + native SwiftUI** (see `adr/0001-ios-vehicle-shared-cpp-core-vs-kmp.md` —
+KMP was evaluated and rejected). This file tracks what the app does today, what's
+deferred, and what's deliberately out of v1 scope.
 
-_Last updated: 2026-06-26._
+_Last updated: 2026-07-05._
 
 ## Status
 
-Meter is **feature-complete and calibrated** on real hardware (Pixel 10 Pro XL).
-UI is functional but unstyled — the next work item. iOS not started.
+Android: **shipping in closed testing** (v1.0.2), calibrated on real hardware
+(Pixel 10 Pro XL); 14-day closed-testing clock running before production.
+
+iOS: **audio path proven, UI not started.** The C++ DSP (`meter_core.h`) is split
+out and runs live on iOS via a C bridge + AVAudioEngine (validated in the
+Simulator — see HANDOFF "iOS" + `ios-spike/`). Next: a native SwiftUI front end.
 
 ---
 

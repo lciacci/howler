@@ -89,9 +89,12 @@ raw mic path). Not a blocker for the vehicle decision — the pipeline and DSP a
 wanted: `ios-spike/README.md` → same project, wired iPhone, free Apple ID signs it, trust the
 dev cert on the phone.
 
-**Next iOS decision (the real one now):** pick the vehicle — KMP (share Kotlin too, Compose
-Multiplatform for UI) vs shared-C++-core + SwiftUI. The spike shows the C++ DSP ports cleanly
-either way, so this is purely a UI-reuse call. Worth a framework-eval ADR before committing.
+**iOS vehicle — decided (`adr/0001-ios-vehicle-shared-cpp-core-vs-kmp.md`):** shared C++ DSP
+core + **native SwiftUI**, KMP rejected. Rationale: the costly shared surface (DSP) is already
+C++ and proven portable; KMP's upside is thin for a single-screen app with bespoke visuals, and
+its cost lands on a shipping Android artifact. **Next iOS work:** stand up a real SwiftUI target
+seeded from `ios-spike/` (the `meter_bridge.{h,cpp}` C-shim graduates from spike to shipping
+bridge). No Android build changes.
 
 Parked out-of-v1 extras (unchanged): history graph, dose, Ln percentiles, octave bands, export.
 
