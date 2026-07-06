@@ -92,9 +92,21 @@ dev cert on the phone.
 **iOS vehicle — decided (`adr/0001-ios-vehicle-shared-cpp-core-vs-kmp.md`):** shared C++ DSP
 core + **native SwiftUI**, KMP rejected. Rationale: the costly shared surface (DSP) is already
 C++ and proven portable; KMP's upside is thin for a single-screen app with bespoke visuals, and
-its cost lands on a shipping Android artifact. **Next iOS work:** stand up a real SwiftUI target
-seeded from `ios-spike/` (the `meter_bridge.{h,cpp}` C-shim graduates from spike to shipping
-bridge). No Android build changes.
+its cost lands on a shipping Android artifact. No Android build changes.
+
+**iOS foundation — done (`27d935e`), in `ios/`.** The spike graduated to a real in-repo target:
+`ios/Bridge/` (shipping C shim `meter_bridge.{h,cpp}` finding `meter_core.h` via header search
+path + `test_host.cpp` headless check), `ios/App/` (`MeterEngine` ObservableObject, placeholder
+debug view, `@main` entry). Verified: host test PASS, C++ compiles for `arm64-apple-ios`, all
+Swift type-checks (Xcode 26.5). `ios-spike/` removed.
+
+**Next iOS work (all feedback-independent, none blocked by the Android trial):**
+1. **Create `HowlerMeter.xcodeproj`** — the one-time Xcode-GUI step (6 steps in `ios/README.md`;
+   can't be scripted headless). Then it builds + runs in the Simulator.
+2. **Calibration port** — iOS mic offset → UserDefaults (ADR step 2).
+3. **Real-device pass** — hardware `.measurement` parity + calibrate vs a reference; needs a
+   physical iPhone.
+- **Held:** the real CRT/DSEG7 SwiftUI UI (ADR step 3) until closed-testing feedback lands.
 
 Parked out-of-v1 extras (unchanged): history graph, dose, Ln percentiles, octave bands, export.
 
