@@ -8,61 +8,49 @@ Vehicle decision + rationale: [`../docs/adr/0001-ios-vehicle-shared-cpp-core-vs-
 
 ```
 ios/
-  Bridge/
-    meter_bridge.h / .cpp            C ABI over howler::MeterCore (the shipping bridge)
-    HowlerMeter-Bridging-Header.h    exposes the C bridge to Swift
-    test_host.cpp                    headless numeric check (runs on macOS, no Xcode)
-  App/
-    HowlerMeterApp.swift             @main entry
-    MeterEngine.swift                AVAudioEngine tap → bridge, ObservableObject
-    ContentView.swift                placeholder debug UI (real CRT/DSEG7 UI is held — see ADR)
-  README.md (this file)
-  .gitignore
+  HowlerMeter/                       Xcode project (open HowlerMeter.xcodeproj)
+    HowlerMeter.xcodeproj
+    HowlerMeter/
+      HowlerMeterApp.swift           @main entry
+      MeterEngine.swift              AVAudioEngine tap → C bridge, ObservableObject
+      ContentView.swift              placeholder debug UI (real CRT/DSEG7 UI is held — see ADR)
+      meter_bridge.h / .cpp          C ABI over howler::MeterCore (the shipping bridge)
+      HowlerMeter-Bridging-Header.h  exposes the C bridge to Swift
+      test_host.cpp                  headless numeric check (NOT in the target)
+  README.md · .gitignore
 ```
 
-The DSP header is **not copied** — the bridge `#include "meter_core.h"` resolves via a
-Header Search Path to the Android tree. One header, both platforms.
+The DSP header `meter_core.h` is **not copied** — the bridge `#include "meter_core.h"`
+resolves via **Header Search Paths** = `/Users/lorenzociacci/Claude/howler/app/src/main/cpp`
+(target Build Settings). One header, both platforms.
 
-## Headless check (do this anytime — no Xcode, no device)
+## Build config that lives in the project (already set)
+
+- **Header Search Paths** → the absolute `app/src/main/cpp` path above (finds `meter_core.h`).
+- **Objective-C Bridging Header** → `HowlerMeter-Bridging-Header.h` (`#import "meter_bridge.h"`).
+- **Info** → `NSMicrophoneUsageDescription` = `Howler measures sound level`.
+- `test_host.cpp` is on disk but **not** in Build Phases → Compile Sources (it has its own
+  `main()`; adding it would collide with the app's `@main`).
+
+## Headless DSP check (no Xcode, no device — run anytime)
 
 ```sh
-cd ios/Bridge
-clang++ -std=c++17 -O2 -Wall -I ../../app/src/main/cpp \
+cd ios/HowlerMeter/HowlerMeter
+clang++ -std=c++17 -O2 -Wall -I ../../../app/src/main/cpp \
     test_host.cpp meter_bridge.cpp -o /tmp/howler_meter_test && /tmp/howler_meter_test
 ```
-
 Expected: `PASS: meter_core.h ports clean + numerically sane via C bridge`.
 
-## Create the Xcode project (the GUI part — ~10 min, one time)
+## Status
 
-Everything below is Xcode-GUI only; all the code already exists in `App/` and `Bridge/`.
-
-1. **New project** → iOS → **App**. Product Name **`HowlerMeter`**, Interface **SwiftUI**,
-   Language **Swift**, Organization Identifier `com.houseofyeti`. **Save it into `ios/`**
-   (so the project sits at `ios/HowlerMeter.xcodeproj`). Uncheck "Create Git repository".
-2. Xcode generates its own `HowlerMeterApp.swift` + `ContentView.swift` — **delete those
-   generated two** from the project, then **add the real files** (drag from Finder,
-   *Reference files in place*, add to the target):
-   - `App/MeterEngine.swift`, `App/ContentView.swift`, `App/HowlerMeterApp.swift`
-   - `Bridge/meter_bridge.h`, `Bridge/meter_bridge.cpp`, `Bridge/HowlerMeter-Bridging-Header.h`
-3. **Bridging header:** Build Settings → *Objective-C Bridging Header* →
-   `$(SRCROOT)/Bridge/HowlerMeter-Bridging-Header.h`
-   (Xcode may also offer to create one when you add the `.cpp` + header — point it at this file.)
-4. **Header Search Paths:** Build Settings → *Header Search Paths* → add
-   `$(SRCROOT)/../app/src/main/cpp` (non-recursive). This is how `meter_bridge.cpp` finds
-   `meter_core.h`.
-5. **Mic permission:** target → Info → add key `NSMicrophoneUsageDescription` =
-   `Howler measures sound level`. (Without it the app is killed on mic access.)
-6. **Run** on an iPhone Simulator (Cmd+R). Allow the Simulator mic prompt (macOS) + the
-   in-app prompt → tap **Start** → the debug readout tracks the Mac mic.
-
-Commit `HowlerMeter.xcodeproj` (the `.gitignore` here excludes per-user + build cruft).
-
-## Status / what's next
-
-- ✅ Bridge + engine + placeholder app — this directory. Host check passes.
-- ⏳ **Xcode project** — the 6 steps above (GUI, can't be scripted headless).
-- ⏳ Calibration port (iOS mic offset → UserDefaults) — ADR step 2.
-- ⏳ Real-device pass — hardware `.measurement` parity + calibration vs a reference.
-- 🅗 **Held:** the real CRT/DSEG7 SwiftUI front end (ADR step 3) — until Android
-  closed-testing feedback lands, so it's built once against a validated design.
+- ✅ Xcode project builds; bridge compiles + links; the AVAudioEngine tap fires and feeds
+  `MeterCore` (verified — the DSP runs on iOS). Host check passes.
+- ⚠️ **iOS Simulator mic delivers silence on this machine** (`peak=0.0`) — an environment
+  quirk of the simulator's audio input, not the app. The identical audio path was already
+  validated live in a Simulator during the spike, so the pipeline is proven; live-audio
+  re-confirmation is deferred to the real-device pass.
+- ⏳ **Real-device pass** — confirm hardware `.measurement`/unprocessed parity + calibrate vs a
+  reference (BAFX). Needs a wired iPhone + free Apple ID signing (trust the dev cert on-device).
+- ⏳ Calibration port — iOS mic offset → UserDefaults (ADR step 2).
+- 🅗 **Held:** the real CRT/DSEG7 SwiftUI front end (ADR step 3) — until Android closed-testing
+  feedback lands, so it's built once against a validated design.
