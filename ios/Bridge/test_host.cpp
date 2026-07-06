@@ -1,9 +1,10 @@
-// Headless proof that meter_core.h is portable stdlib C++ and numerically sane,
+// Headless check that meter_core.h is portable stdlib C++ and numerically sane,
 // exercised THROUGH the C bridge (so the shim is covered too). Runs on the macOS
-// host today — no Xcode, no device. The iOS target differs only by SDK sysroot;
-// pure-stdlib C++ that builds here builds for arm64-apple-ios.
+// host — no Xcode, no device. The iOS target differs only by SDK sysroot.
 //
-// Build + run:  see README.md ("Headless host check").
+// Build + run (from ios/Bridge/):
+//   clang++ -std=c++17 -O2 -Wall -I ../../app/src/main/cpp \
+//       test_host.cpp meter_bridge.cpp -o /tmp/howler_meter_test && /tmp/howler_meter_test
 
 #include "meter_bridge.h"
 
@@ -42,25 +43,22 @@ int main() {
     // 1 kHz sine, amp 0.5 → RMS = 0.5/√2 → dBFS = 20·log10(0.35355) = -9.03.
     const double kExpected = 20.0 * std::log10(0.5 / std::sqrt(2.0));
 
-    // Z-weighting (flat) must pass the sine straight through.
-    meter_set_weighting(m, 0);
+    meter_set_weighting(m, 0);  // Z (flat)
     meter_reset_stats(m);
-    feedSine(m, 0.5, 2.0);  // 2 s >> Fast τ=125 ms → smoother settled
+    feedSine(m, 0.5, 2.0);      // 2 s >> Fast τ=125 ms → smoother settled
     printf("Z level = %.2f dBFS (expect %.2f)\n", meter_level_dbfs(m), kExpected);
     assert(near(meter_level_dbfs(m), kExpected, 0.1) && "Z-weight 1kHz level");
     assert(!meter_over_range(m) && "amp 0.5 must not trip over-range");
     assert(meter_max_dbfs(m) >= meter_level_dbfs(m) && "max >= live");
     assert(meter_min_dbfs(m) <= meter_level_dbfs(m) && "min <= live");
 
-    // A-weighting is normalized to 0 dB at 1 kHz → same level within filter tol.
-    meter_set_weighting(m, 1);
+    meter_set_weighting(m, 1);  // A — normalized to 0 dB at 1 kHz → same level
     feedSine(m, 0.5, 2.0);
     printf("A level = %.2f dBFS (expect %.2f)\n", meter_level_dbfs(m), kExpected);
     assert(near(meter_level_dbfs(m), kExpected, 0.2) && "A-weight 1kHz ~= Z at 1kHz");
 
-    // Full-scale must trip over-range + clip flag on Max.
     meter_reset_stats(m);
-    feedSine(m, 1.0, 0.5);
+    feedSine(m, 1.0, 0.5);      // full-scale → clip
     printf("over=%d maxClipped=%d\n", meter_over_range(m), meter_max_clipped(m));
     assert(meter_over_range(m) && "amp 1.0 must trip over-range");
     assert(meter_max_clipped(m) && "clipped block must flag Max");

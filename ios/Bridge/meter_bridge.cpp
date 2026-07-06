@@ -1,10 +1,11 @@
-// C-shim implementation over howler::MeterCore. Reaches the shared DSP header in
-// the Android tree directly (../app/src/main/cpp) — the whole point of the spike
-// is that ONE header serves both platforms, so we do not copy it.
+// C-shim implementation over howler::MeterCore. The shared DSP header lives in
+// the Android tree (app/src/main/cpp/meter_core.h) and is found via a header
+// search path — ONE header serves both platforms, nothing is copied. See
+// ios/README.md for the Xcode "Header Search Paths" setting.
 
 #include "meter_bridge.h"
 
-#include "../app/src/main/cpp/meter_core.h"
+#include "meter_core.h"
 
 using howler::MeterCore;
 

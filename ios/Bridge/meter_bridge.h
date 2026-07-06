@@ -1,11 +1,11 @@
 #ifndef HOWLER_METER_BRIDGE_H
 #define HOWLER_METER_BRIDGE_H
 
-// C ABI over howler::MeterCore (../app/src/main/cpp/meter_core.h). Swift cannot
-// call C++ classes directly across all toolchains, so this flat C shim is the
-// portable bridge: Swift imports this header, AVAudioEngine feeds meter_process,
-// and the getters mirror the Android JNI surface one-to-one. Spike only — the
-// real port folds this into the KMP/native module.
+// C ABI over howler::MeterCore (app/src/main/cpp/meter_core.h — the shared DSP,
+// one header for both platforms). Swift cannot call C++ classes directly across
+// all toolchains, so this flat C shim is the bridge: the SwiftUI app imports this
+// header via the bridging header, AVAudioEngine feeds meter_process, and the
+// getters mirror the Android JNI surface one-to-one.
 
 #include <stdbool.h>
 #include <stdint.h>
