@@ -100,12 +100,19 @@ path + `test_host.cpp` headless check), `ios/App/` (`MeterEngine` ObservableObje
 debug view, `@main` entry). Verified: host test PASS, C++ compiles for `arm64-apple-ios`, all
 Swift type-checks (Xcode 26.5). `ios-spike/` removed.
 
+**Xcode project — done (`68ef3af`).** `ios/HowlerMeter/HowlerMeter.xcodeproj` builds; the C
+bridge compiles + links; the AVAudioEngine tap fires and feeds `MeterCore` — DSP confirmed
+running on iOS. Project folder is the single source of truth (Xcode copied sources on add; the
+`ios/App` + `ios/Bridge` staging dirs were removed). In-project build config (Header Search
+Paths → the absolute `app/src/main/cpp`, bridging header, mic key) is set — see `ios/README.md`.
+Caveat: **the iOS Simulator mic delivers silence on this machine** (`peak=0.0`) — a simulator
+audio-input quirk, not the app (the identical path ran live in the spike). Live-audio re-confirm
+is folded into the real-device pass, not a separate blocker.
+
 **Next iOS work (all feedback-independent, none blocked by the Android trial):**
-1. **Create `HowlerMeter.xcodeproj`** — the one-time Xcode-GUI step (6 steps in `ios/README.md`;
-   can't be scripted headless). Then it builds + runs in the Simulator.
-2. **Calibration port** — iOS mic offset → UserDefaults (ADR step 2).
-3. **Real-device pass** — hardware `.measurement` parity + calibrate vs a reference; needs a
-   physical iPhone.
+1. **Calibration port** — iOS mic offset → UserDefaults (ADR step 2).
+2. **Real-device pass** — hardware `.measurement` parity + live-audio confirm + calibrate vs a
+   reference (BAFX); needs a wired iPhone + free Apple ID signing (trust the dev cert on-device).
 - **Held:** the real CRT/DSEG7 SwiftUI UI (ADR step 3) until closed-testing feedback lands.
 
 Parked out-of-v1 extras (unchanged): history graph, dose, Ln percentiles, octave bands, export.
