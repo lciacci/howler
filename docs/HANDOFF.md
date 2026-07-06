@@ -109,11 +109,23 @@ Caveat: **the iOS Simulator mic delivers silence on this machine** (`peak=0.0`) 
 audio-input quirk, not the app (the identical path ran live in the spike). Live-audio re-confirm
 is folded into the real-device pass, not a separate blocker.
 
-**Next iOS work (all feedback-independent, none blocked by the Android trial):**
-1. **Calibration port** — iOS mic offset → UserDefaults (ADR step 2).
-2. **Real-device pass** — hardware `.measurement` parity + live-audio confirm + calibrate vs a
-   reference (BAFX); needs a wired iPhone + free Apple ID signing (trust the dev cert on-device).
-- **Held:** the real CRT/DSEG7 SwiftUI UI (ADR step 3) until closed-testing feedback lands.
+**Calibration — done (`f9a57d0`, ADR step 2).** `ios/HowlerMeter/HowlerMeter/Calibration.swift`
+mirrors Android `Calibration.kt`/`CalibrationStore.kt`: tier-2 manual offset (`SPL = dBFS +
+offset`) + UserDefaults store + resolver, wired into `MeterEngine` (`splFromDbfs`,
+`saveManualCalibration`, `clearCalibration`). Tier-1 device-sensitivity omitted (no iOS API;
+Android doesn't auto-trust it either). Capture *dialog* is deferred to the held UI (step 3).
+Verified by `ios/checks/calibration_check.swift` (headless, PASS).
+
+Note: the app folder is a **file-system-synchronized group** — Xcode auto-compiles every file
+in `ios/HowlerMeter/HowlerMeter/`. Keep only app sources there; anything with its own
+`main()`/`@main` (the host checks) lives in `ios/checks/` or it collides with the app `@main`.
+
+**Next iOS work (feedback-independent, not blocked by the Android trial):**
+1. **Real-device pass** — hardware `.measurement` parity + live-audio confirm + run a real
+   manual calibration vs a reference (BAFX); needs a wired iPhone + free Apple ID signing (trust
+   the dev cert on-device). Lorenzo can borrow a device for this.
+- **Held:** the real CRT/DSEG7 SwiftUI UI + the calibration capture dialog (ADR step 3) until
+  closed-testing feedback lands.
 
 Parked out-of-v1 extras (unchanged): history graph, dose, Ln percentiles, octave bands, export.
 
