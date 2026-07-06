@@ -120,12 +120,23 @@ Note: the app folder is a **file-system-synchronized group** — Xcode auto-comp
 in `ios/HowlerMeter/HowlerMeter/`. Keep only app sources there; anything with its own
 `main()`/`@main` (the host checks) lives in `ios/checks/` or it collides with the app `@main`.
 
-**Next iOS work (feedback-independent, not blocked by the Android trial):**
-1. **Real-device pass** — hardware `.measurement` parity + live-audio confirm + run a real
-   manual calibration vs a reference (BAFX); needs a wired iPhone + free Apple ID signing (trust
-   the dev cert on-device). Lorenzo can borrow a device for this.
-- **Held:** the real CRT/DSEG7 SwiftUI UI + the calibration capture dialog (ADR step 3) until
-  closed-testing feedback lands.
+**Real-device pass — done (`ca31f39`, on a physical iPad).** Signed with the personal team
+(free Apple ID, auto-signing; `DEVELOPMENT_TEAM` now in the project), added the required
+`NSMicrophoneUsageDescription` (INFOPLIST_KEY, both configs — app crashes on mic access without
+it). Confirmed live: the meter tracks the real hardware mic and **holds steady under a constant
+source** → `.measurement`/unprocessed is working, no AGC. **iOS audio path proven end-to-end on
+device — the audio risk is fully dead.**
+
+On-device BAFX calibration was **skipped by choice**: the capture UI is held (step 3), the offset
+is per-device so a borrowed-iPad number is discarded anyway, and the calibration mechanism is
+already unit-tested headless (`ios/checks/calibration_check.swift`). Real calibration happens on
+the final iPhone through the real UI, later.
+
+**iOS status: audio fully derisked. Only UI remains — and it's held.**
+
+- 🅗 **Held:** the real CRT/DSEG7 SwiftUI UI + the calibration capture dialog (ADR step 3) until
+  Android closed-testing feedback lands, so it's built once against a validated design. This is
+  the last iOS work item; nothing else is open.
 
 Parked out-of-v1 extras (unchanged): history graph, dose, Ln percentiles, octave bands, export.
 
