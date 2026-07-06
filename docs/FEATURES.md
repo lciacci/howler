@@ -5,16 +5,23 @@ core + native SwiftUI** (see `adr/0001-ios-vehicle-shared-cpp-core-vs-kmp.md` �
 KMP was evaluated and rejected). This file tracks what the app does today, what's
 deferred, and what's deliberately out of v1 scope.
 
-_Last updated: 2026-07-05._
+_Last updated: 2026-07-06._
 
 ## Status
 
 Android: **shipping in closed testing** (v1.0.2), calibrated on real hardware
 (Pixel 10 Pro XL); 14-day closed-testing clock running before production.
 
-iOS: **audio path proven, UI not started.** The C++ DSP (`meter_core.h`) is split
-out and runs live on iOS via a C bridge + AVAudioEngine (validated in the
-Simulator — see HANDOFF "iOS" + `ios-spike/`). Next: a native SwiftUI front end.
+iOS: **audio fully derisked; only the UI remains (held).** The C++ DSP
+(`meter_core.h`) is shared verbatim with Android and runs live on iOS via a C
+bridge + AVAudioEngine — proven **end-to-end on a physical device** (real mic
+tracks, holds steady under a constant source → `.measurement`/unprocessed
+working, no AGC). Calibration is ported (`Calibration.swift`, tier-2 manual
+offset + UserDefaults) and unit-tested headless. The Xcode project lives in
+`ios/`. The only open iOS work is the native SwiftUI front end + calibration
+capture dialog, **deliberately held until Android closed-testing feedback
+lands** so it's built once against a validated design. See HANDOFF "iOS" +
+`adr/0001-ios-vehicle-shared-cpp-core-vs-kmp.md`.
 
 ---
 
