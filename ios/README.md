@@ -10,13 +10,16 @@ Vehicle decision + rationale: [`../docs/adr/0001-ios-vehicle-shared-cpp-core-vs-
 ios/
   HowlerMeter/                       Xcode project (open HowlerMeter.xcodeproj)
     HowlerMeter.xcodeproj
-    HowlerMeter/
-      HowlerMeterApp.swift           @main entry
-      MeterEngine.swift              AVAudioEngine tap → C bridge, ObservableObject
-      ContentView.swift              placeholder debug UI (real CRT/DSEG7 UI is held — see ADR)
-      meter_bridge.h / .cpp          C ABI over howler::MeterCore (the shipping bridge)
-      HowlerMeter-Bridging-Header.h  exposes the C bridge to Swift
-      test_host.cpp                  headless numeric check (NOT in the target)
+    HowlerMeter/                     app target — a file-system-synchronized group:
+      HowlerMeterApp.swift           @main entry            EVERY file in this folder is
+      MeterEngine.swift              tap → bridge, engine    auto-compiled into the target,
+      ContentView.swift              placeholder debug UI    so keep ONLY app sources here
+      Calibration.swift              dBFS→SPL model + store   (host checks live in ../checks).
+      meter_bridge.h / .cpp          C ABI over MeterCore
+      HowlerMeter-Bridging-Header.h  exposes the bridge to Swift
+  checks/                            standalone host checks (NOT in the target)
+    test_host.cpp                    DSP numeric check (macOS host)
+    calibration_check.swift          Calibration model + store check (macOS host)
   README.md · .gitignore
 ```
 
@@ -29,28 +32,37 @@ resolves via **Header Search Paths** = `/Users/lorenzociacci/Claude/howler/app/s
 - **Header Search Paths** → the absolute `app/src/main/cpp` path above (finds `meter_core.h`).
 - **Objective-C Bridging Header** → `HowlerMeter-Bridging-Header.h` (`#import "meter_bridge.h"`).
 - **Info** → `NSMicrophoneUsageDescription` = `Howler measures sound level`.
-- `test_host.cpp` is on disk but **not** in Build Phases → Compile Sources (it has its own
-  `main()`; adding it would collide with the app's `@main`).
+- The app folder is a **synchronized group**: dropping a `.swift`/`.cpp` in it auto-adds it to
+  the target (no manual add). The flip side — anything with its own `main()`/`@main` (the host
+  checks) must stay in `ios/checks/`, or it collides with the app's `@main`.
 
-## Headless DSP check (no Xcode, no device — run anytime)
+## Headless checks (no Xcode, no device — run anytime, from `ios/checks/`)
 
 ```sh
-cd ios/HowlerMeter/HowlerMeter
-clang++ -std=c++17 -O2 -Wall -I ../../../app/src/main/cpp \
-    test_host.cpp meter_bridge.cpp -o /tmp/howler_meter_test && /tmp/howler_meter_test
+cd ios/checks
+# DSP:
+clang++ -std=c++17 -O2 -Wall -I ../../app/src/main/cpp -I ../HowlerMeter/HowlerMeter \
+    test_host.cpp ../HowlerMeter/HowlerMeter/meter_bridge.cpp \
+    -o /tmp/howler_meter_test && /tmp/howler_meter_test
+# Calibration:
+swiftc ../HowlerMeter/HowlerMeter/Calibration.swift calibration_check.swift \
+    -o /tmp/howler_cal_check && /tmp/howler_cal_check
 ```
-Expected: `PASS: meter_core.h ports clean + numerically sane via C bridge`.
+Expected: `PASS: meter_core.h ...` and `PASS: calibration model + store`.
 
 ## Status
 
 - ✅ Xcode project builds; bridge compiles + links; the AVAudioEngine tap fires and feeds
-  `MeterCore` (verified — the DSP runs on iOS). Host check passes.
-- ⚠️ **iOS Simulator mic delivers silence on this machine** (`peak=0.0`) — an environment
-  quirk of the simulator's audio input, not the app. The identical audio path was already
-  validated live in a Simulator during the spike, so the pipeline is proven; live-audio
-  re-confirmation is deferred to the real-device pass.
-- ⏳ **Real-device pass** — confirm hardware `.measurement`/unprocessed parity + calibrate vs a
-  reference (BAFX). Needs a wired iPhone + free Apple ID signing (trust the dev cert on-device).
-- ⏳ Calibration port — iOS mic offset → UserDefaults (ADR step 2).
-- 🅗 **Held:** the real CRT/DSEG7 SwiftUI front end (ADR step 3) — until Android closed-testing
-  feedback lands, so it's built once against a validated design.
+  `MeterCore` (DSP runs on iOS). Both host checks pass.
+- ✅ **Calibration ported (ADR step 2):** `Calibration.swift` — tier-2 manual offset
+  (`SPL = dBFS + offset`) + UserDefaults store + resolver, wired into `MeterEngine`
+  (`splFromDbfs`, `saveManualCalibration`, `clearCalibration`). Mirrors Android
+  `Calibration.kt`/`CalibrationStore.kt`; tier-1 device-sensitivity omitted (no iOS API, and
+  Android doesn't auto-trust it either). Capture UI deferred to step 3.
+- ⚠️ **iOS Simulator mic delivers silence on this machine** (`peak=0.0`) — a simulator
+  audio-input quirk, not the app (the identical path ran live in the spike). Live-audio
+  re-confirmation is folded into the real-device pass.
+- ⏳ **Real-device pass** — hardware `.measurement`/unprocessed parity + live-audio confirm +
+  calibrate vs a reference (BAFX). Needs a wired iPhone + free Apple ID signing.
+- 🅗 **Held:** the real CRT/DSEG7 SwiftUI front end + calibration capture dialog (ADR step 3) —
+  until Android closed-testing feedback lands, so it's built once against a validated design.

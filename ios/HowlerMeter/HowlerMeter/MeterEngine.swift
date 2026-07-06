@@ -13,11 +13,34 @@ final class MeterEngine: ObservableObject {
     @Published private(set) var over = false
     @Published private(set) var running = false
 
+    /// Current dBFS→SPL mapping (tier-2 manual or uncalibrated). The DSP stays
+    /// uncalibrated; calibration is applied at display, mirroring Android.
+    @Published private(set) var calibration: Calibration = .uncalibrated
+
     private let engine = AVAudioEngine()
     private let meter = meter_create()
     private var poll: Timer?
+    private let calStore = CalibrationStore()
+
+    init() { calibration = resolveCalibration(storedManual: calStore.loadManual()) }
 
     deinit { meter_destroy(meter) }
+
+    /// dB SPL for a measured dBFS under the current calibration, or nil if none.
+    func splFromDbfs(_ dbfs: Float) -> Float? { calibration.splFromDbfs(dbfs) }
+
+    /// Tier-2 single-point calibration: pin the current live level to a reference
+    /// reading. Capture UI is deferred (ADR step 3); this is the mechanism.
+    func saveManualCalibration(referenceSpl: Double, meterClass: String) {
+        let offset = manualOffset(referenceSpl: referenceSpl, measuredDbfs: Double(levelDbfs))
+        calStore.saveManual(offsetDb: offset, referenceMeterClass: meterClass)
+        calibration = .manual(offsetDb: offset, referenceMeterClass: meterClass)
+    }
+
+    func clearCalibration() {
+        calStore.clear()
+        calibration = .uncalibrated
+    }
 
     func start() throws {
         guard !running else { return }

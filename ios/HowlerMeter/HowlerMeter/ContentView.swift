@@ -9,12 +9,16 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text(String(format: "%.1f", meter.levelDbfs))
+            let spl = meter.splFromDbfs(meter.levelDbfs)
+            Text(String(format: "%.1f", spl ?? meter.levelDbfs))
                 .font(.system(size: 56, weight: .bold, design: .monospaced))
-            Text("dBFS (uncalibrated)").font(.caption).foregroundStyle(.secondary)
+            Text(spl != nil ? "dB SPL" : "dBFS (uncalibrated)")
+                .font(.caption).foregroundStyle(.secondary)
 
             Text(String(format: "max %.1f   min %.1f   Leq %.1f",
-                        meter.maxDbfs, meter.minDbfs, meter.leqDbfs))
+                        meter.splFromDbfs(meter.maxDbfs) ?? meter.maxDbfs,
+                        meter.splFromDbfs(meter.minDbfs) ?? meter.minDbfs,
+                        meter.splFromDbfs(meter.leqDbfs) ?? meter.leqDbfs))
                 .font(.footnote.monospaced())
             if meter.over { Text("OVER").font(.headline).foregroundStyle(.red) }
 

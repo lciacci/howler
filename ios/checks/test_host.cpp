@@ -2,10 +2,11 @@
 // exercised THROUGH the C bridge (so the shim is covered too). Runs on the macOS
 // host — no Xcode, no device. The iOS target differs only by SDK sysroot.
 //
-// Not part of the Xcode target (it has its own main()) — a standalone headless
-// check. Build + run (from ios/HowlerMeter/HowlerMeter/):
-//   clang++ -std=c++17 -O2 -Wall -I ../../../app/src/main/cpp \
-//       test_host.cpp meter_bridge.cpp -o /tmp/howler_meter_test && /tmp/howler_meter_test
+// Standalone headless check — lives outside the app's synchronized source folder
+// so Xcode never sweeps its main() into the target. Build + run (from ios/checks/):
+//   clang++ -std=c++17 -O2 -Wall -I ../../app/src/main/cpp -I ../HowlerMeter/HowlerMeter \
+//       test_host.cpp ../HowlerMeter/HowlerMeter/meter_bridge.cpp \
+//       -o /tmp/howler_meter_test && /tmp/howler_meter_test
 
 #include "meter_bridge.h"
 
