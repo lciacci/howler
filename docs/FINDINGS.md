@@ -7,6 +7,7 @@ Runtime friction surfaced while working in Howler. Framework-level fixes land in
 
 ## F-001 — `install.md` Mnemos step is Apple-Silicon-fragile (dual-Homebrew shadowing)
 
+**Status:** transferred:tessera 6640d19
 **Surfaced:** 2026-06-24, restoring Howler session state on the migrated machine.
 **Resolved:** 2026-06-24 in `../tessera` `6640d19` (one-time authorized cross-repo edit).
 
@@ -33,6 +34,7 @@ resolves; `mnemos` is one global pkg so this fixed tessera too.
 
 ## F-002 — Migration slug caveat fired; clarify it uses realpath on-disk casing
 
+**Status:** open
 **Surfaced:** 2026-06-24, restoring `claude-project.tgz`.
 
 **What happened.** `howler-migration-export/RESTORE.md` exports the Claude project transcript
@@ -54,6 +56,7 @@ issue — validates the export's split design (repo-relative state vs path-slug 
 
 ## F-003 — Downstream statusline scripts diverge from Tessera source
 
+**Status:** transferred:ADR-0004
 **Surfaced:** 2026-06-27, after tier-advisory patch landed in tessera but not howler.
 
 **What happened.** `mnemos-statusline.sh` is scaffolded into every downstream project at init time. When Tessera patches its own copy (e.g. tier-flag feature), downstream copies don't get the update — they're inert copies with no sync mechanism. Discovered when tier `⚑tier:` flag appeared in Tessera session but not Howler.
@@ -71,6 +74,7 @@ issue — validates the export's split design (repo-relative state vs path-slug 
 
 ## F-004 — Package rename left JNI C++ symbols stale → crash on open, no build error
 
+**Status:** transferred:observatory (cross-cutting rename guard, Watching)
 **Surfaced:** 2026-06-30, closed tester reported Howler crashes on open (Android 16).
 
 **What happened.** Commit `7b0feaf` renamed the app package `com.example.howler` →
