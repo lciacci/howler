@@ -34,7 +34,7 @@ resolves; `mnemos` is one global pkg so this fixed tessera too.
 
 ## F-002 — Migration slug caveat fired; clarify it uses realpath on-disk casing
 
-**Status:** open
+**Status:** transferred:observatory "Reusable migration skill" (tessera, 2026-07-10)
 **Surfaced:** 2026-06-24, restoring `claude-project.tgz`.
 
 **What happened.** `howler-migration-export/RESTORE.md` exports the Claude project transcript
