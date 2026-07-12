@@ -66,7 +66,7 @@ fi
 # compaction-recovery trial falsifiable. Without it, "never aided a recovery"
 # is unanswerable rather than false. See docs/observatory.md.
 
-HOOK_INPUT="$HOOK_INPUT" python3 -c "
+HOOK_INPUT="$HOOK_INPUT" "$TOOLCHAIN_PY" -c "
 import json, time, os, sys
 os.makedirs('.mnemos', exist_ok=True)
 ts = time.time()

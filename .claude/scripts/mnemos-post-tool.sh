@@ -9,6 +9,22 @@
 # No set -euo pipefail: hook scripts must be defensive, not strict.
 # Timeout: 3 seconds max
 
+
+# ── Toolchain interpreter: a PATH, never a NAME. (F-001) ──────────────────────────────────
+# This hook used bare `python3`. With sys.path/PYTHONPATH pointed at scripts/, ANY interpreter
+# imports mnemos/icpg straight from source — so that did NOT fail, it SILENTLY SUCCEEDED on
+# whatever Homebrew currently owns the `python3` name. The original F-001 failed silently
+# (import error → no-op); this one *worked*, on an interpreter brew can re-point or delete.
+# A silent success is strictly harder to detect than a silent failure.
+# No toolchain → this hook goes QUIET. tessera-watch P9 makes that visible.
+TOOLCHAIN_PY=""
+if [ -x ".venv/bin/python" ]; then
+    TOOLCHAIN_PY=".venv/bin/python"
+elif command -v mnemos >/dev/null 2>&1; then
+    TOOLCHAIN_PY="$(sed -n '1s/^#!//p' "$(command -v mnemos)" 2>/dev/null | awk '{print $1}')"
+fi
+[ -n "$TOOLCHAIN_PY" ] && [ -x "$TOOLCHAIN_PY" ] || exit 0
+# ──────────────────────────────────────────────────────────────────────────────────────────
 if [ ! -d ".mnemos" ]; then
     exit 0
 fi
@@ -28,7 +44,7 @@ echo "$HOOK_INPUT" > "$TMPFILE" 2>/dev/null
 # which is bare `python3` when homebrew's default python outpaces the version
 # mnemos was installed for. The console script's shebang pins the right one.
 MNEMOS_PY=$(sed -n '1s/^#!//p' "$(command -v mnemos 2>/dev/null)" 2>/dev/null)
-[ -x "$MNEMOS_PY" ] || MNEMOS_PY="python3"
+[ -x "$MNEMOS_PY" ] || MNEMOS_PY="$TOOLCHAIN_PY"
 
 "$MNEMOS_PY" -c "
 import json, sys, time, os, glob

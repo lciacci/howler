@@ -20,6 +20,22 @@
 
 # ─── Read hook input from stdin ───
 
+
+# ── Toolchain interpreter: a PATH, never a NAME. (F-001) ──────────────────────────────────
+# This hook used bare `python3`. With sys.path/PYTHONPATH pointed at scripts/, ANY interpreter
+# imports mnemos/icpg straight from source — so that did NOT fail, it SILENTLY SUCCEEDED on
+# whatever Homebrew currently owns the `python3` name. The original F-001 failed silently
+# (import error → no-op); this one *worked*, on an interpreter brew can re-point or delete.
+# A silent success is strictly harder to detect than a silent failure.
+# No toolchain → this hook goes QUIET. tessera-watch P9 makes that visible.
+TOOLCHAIN_PY=""
+if [ -x ".venv/bin/python" ]; then
+    TOOLCHAIN_PY=".venv/bin/python"
+elif command -v mnemos >/dev/null 2>&1; then
+    TOOLCHAIN_PY="$(sed -n '1s/^#!//p' "$(command -v mnemos)" 2>/dev/null | awk '{print $1}')"
+fi
+[ -n "$TOOLCHAIN_PY" ] && [ -x "$TOOLCHAIN_PY" ] || exit 0
+# ──────────────────────────────────────────────────────────────────────────────────────────
 HOOK_INPUT=$(cat)
 
 # ─── Extract file path and tool name ───
@@ -27,7 +43,7 @@ HOOK_INPUT=$(cat)
 FILE_PATH=""
 TOOL_NAME=""
 if [ -n "$HOOK_INPUT" ]; then
-    eval $(echo "$HOOK_INPUT" | python3 -c "
+    eval $(echo "$HOOK_INPUT" | "$TOOLCHAIN_PY" -c "
 import sys, json
 try:
     data = json.load(sys.stdin)
@@ -48,7 +64,7 @@ fi
 # ─── Log signal for fatigue computation ───
 
 if [ -d ".mnemos" ] || [ -f ".mnemos/fatigue.json" ]; then
-    python3 -c "
+    "$TOOLCHAIN_PY" -c "
 import json, time, os
 os.makedirs('.mnemos', exist_ok=True)
 signal = {
@@ -66,7 +82,7 @@ fi
 
 FATIGUE_WARNING=""
 if [ -f ".mnemos/fatigue.json" ]; then
-    FATIGUE_ACTION=$(python3 -c "
+    FATIGUE_ACTION=$("$TOOLCHAIN_PY" -c "
 import json, sys
 sys.path.insert(0, 'scripts')
 
