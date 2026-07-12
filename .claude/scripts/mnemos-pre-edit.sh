@@ -1,4 +1,12 @@
 #!/bin/bash
+
+# ── Toolchain resolution: a PATH, never a NAME, and NO bare-python3 fallback. (F-001) ──
+# This block used to fall back to `python3 -m mnemos`. That fallback was the bug: with
+# PYTHONPATH=scripts, ANY interpreter imports mnemos straight from source — so it did not
+# fail, it silently SUCCEEDED on an unmanaged Python that Homebrew can re-point or delete.
+# The original F-001 failed silently (import error → no-op); this one *worked*, on the wrong
+# interpreter. A silent success is strictly harder to detect than a silent failure.
+# If the toolchain is unreachable, this hook now goes QUIET. tessera-watch P9 catches that.
 # Mnemos PreToolUse Hook — fatigue-aware pre-edit with iCPG context.
 #
 # 1. Logs file path to signals.jsonl (for scope scatter + re-read tracking)
@@ -89,10 +97,10 @@ except Exception:
     # Auto-checkpoint at pre_sleep or higher
     if [ "$FATIGUE_ACTION" = "pre_sleep" ] || [ "$FATIGUE_ACTION" = "rem" ] || [ "$FATIGUE_ACTION" = "emergency" ]; then
         # Write checkpoint in background (don't block the hook)
-        if command -v mnemos &>/dev/null; then
+        if [ -x ".venv/bin/mnemos" ]; then
+            .venv/bin/mnemos checkpoint --force &>/dev/null &
+        elif command -v mnemos &>/dev/null; then
             mnemos checkpoint --force &>/dev/null &
-        elif python3 -m mnemos --version &>/dev/null 2>&1; then
-            PYTHONPATH=scripts python3 -m mnemos checkpoint --force &>/dev/null &
         fi
 
         if [ "$FATIGUE_ACTION" = "emergency" ]; then
@@ -106,10 +114,10 @@ except Exception:
 
     # Auto-consolidate at compress or higher
     if [ "$FATIGUE_ACTION" = "compress" ] || [ "$FATIGUE_ACTION" = "pre_sleep" ] || [ "$FATIGUE_ACTION" = "rem" ]; then
-        if command -v mnemos &>/dev/null; then
+        if [ -x ".venv/bin/mnemos" ]; then
+            .venv/bin/mnemos consolidate &>/dev/null &
+        elif command -v mnemos &>/dev/null; then
             mnemos consolidate &>/dev/null &
-        elif python3 -m mnemos --version &>/dev/null 2>&1; then
-            PYTHONPATH=scripts python3 -m mnemos consolidate &>/dev/null &
         fi
     fi
 fi
@@ -120,12 +128,15 @@ CONTEXT=""
 CONSTRAINTS=""
 DRIFT=""
 
-if command -v icpg &>/dev/null || python3 -m icpg --version &>/dev/null 2>&1; then
+ICPG_CMD=""
+if [ -x ".venv/bin/icpg" ]; then
+    ICPG_CMD=".venv/bin/icpg"
+elif command -v icpg &>/dev/null; then
+    ICPG_CMD="icpg"
+fi
+
+if [ -n "$ICPG_CMD" ]; then
     if [ -f ".icpg/reason.db" ]; then
-        ICPG_CMD="icpg"
-        if ! command -v icpg &>/dev/null; then
-            ICPG_CMD="python3 -m icpg"
-        fi
 
         CONTEXT=$($ICPG_CMD query context "$FILE_PATH")
         CONSTRAINTS=$($ICPG_CMD query constraints "$FILE_PATH")

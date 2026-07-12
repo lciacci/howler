@@ -23,7 +23,14 @@ fi
 TMPFILE=$(mktemp /tmp/mnemos-post-XXXXXX.json 2>/dev/null || echo "/tmp/mnemos-post-$$.json")
 echo "$HOOK_INPUT" > "$TMPFILE" 2>/dev/null
 
-python3 -c "
+# Resolve a mnemos-capable interpreter. The auto_nodes import below silently
+# no-ops (except ImportError: pass) when run under a python without mnemos —
+# which is bare `python3` when homebrew's default python outpaces the version
+# mnemos was installed for. The console script's shebang pins the right one.
+MNEMOS_PY=$(sed -n '1s/^#!//p' "$(command -v mnemos 2>/dev/null)" 2>/dev/null)
+[ -x "$MNEMOS_PY" ] || MNEMOS_PY="python3"
+
+"$MNEMOS_PY" -c "
 import json, sys, time, os, glob
 from pathlib import Path
 

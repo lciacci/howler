@@ -65,7 +65,7 @@ SUFFIX=""
 CACHE="$HOME/.claude/routing-cache.json"
 if [ -f "$CACHE" ]; then
     TIER_MODEL=$(jq -r '.tier // ""' "$CACHE" 2>/dev/null | sed 's/CLAUDE_//' | tr '[:upper:]' '[:lower:]')
-    CUR_MODEL=$(echo "$INPUT" | jq -r '.model.id // ""' 2>/dev/null | grep -oE 'opus|sonnet|haiku' | head -1)
+    CUR_MODEL=$(echo "$INPUT" | jq -r '.model.id // ""' 2>/dev/null | grep -oE 'fable|opus|sonnet|haiku' | head -1)
     if [ -n "$TIER_MODEL" ] && [ -n "$CUR_MODEL" ] && [ "$TIER_MODEL" != "$CUR_MODEL" ]; then
         SUFFIX="⚑tier:${TIER_MODEL} "
     fi

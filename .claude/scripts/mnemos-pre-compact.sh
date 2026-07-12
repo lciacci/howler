@@ -1,39 +1,89 @@
 #!/bin/bash
+
+# ── Toolchain resolution: a PATH, never a NAME, and NO bare-python3 fallback. (F-001) ──
+# This block used to fall back to `python3 -m mnemos`. That fallback was the bug: with
+# PYTHONPATH=scripts, ANY interpreter imports mnemos straight from source — so it did not
+# fail, it silently SUCCEEDED on an unmanaged Python that Homebrew can re-point or delete.
+# The original F-001 failed silently (import error → no-op); this one *worked*, on the wrong
+# interpreter. A silent success is strictly harder to detect than a silent failure.
+# If the toolchain is unreachable, this hook now goes QUIET. tessera-watch P9 catches that.
 # Mnemos PreCompact Hook — emergency checkpoint + typed preservation + compaction marker.
 #
-# TWO-LAYER DEFENSE against lossy compaction:
+# THREE-LAYER DEFENSE against lossy compaction:
 #   Layer 1 (this script): Write emergency checkpoint, output strong preservation
 #           instructions with inline content for the summarizer.
-#   Layer 2 (mnemos-post-compact-inject.sh): After compaction, the first tool call
-#           re-injects the full checkpoint. See that script for details.
+#   Layer 2 (mnemos-session-start.sh): SessionStart is wired without a matcher,
+#           so it fires on source=compact and prints the checkpoint before the
+#           agent acts. Primary restore. Does not consume the marker.
+#   Layer 3 (mnemos-post-compact-inject.sh): PreToolUse. Consumes the marker and
+#           re-injects on the first tool call. Only layer that fires when the
+#           post-compaction turn has no tool call.
 #
-# The marker file (.mnemos/just-compacted) bridges the two layers.
+# The marker file (.mnemos/just-compacted) bridges layers 1 and 3.
+# .mnemos/compaction-log.jsonl is the durable record — the marker is deleted
+# on consumption, so without the log there is NO evidence compaction occurred.
 #
 # Install: add to .claude/settings.json under hooks.PreCompact
 # This EXTENDS (not replaces) the existing pre-compact.sh
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# ─── 0. Capture the compaction trigger (manual `/compact` vs auto context-full) ───
+# Claude Code sends {session_id, transcript_path, trigger, custom_instructions} on stdin.
+# This MUST be recorded: the Mnemos trial's verdict predicate (tessera-watch P3) counts
+# compaction_fired events, and a hand-run `/compact` used to *test* the recovery layer would
+# otherwise be indistinguishable from a real context-full compaction — so three test
+# compactions would trip the trial's verdict on evidence we manufactured. That is the P2
+# failure exactly: a predicate firing correctly on a proxy that tracks no real pain.
+HOOK_INPUT=$(cat 2>/dev/null || true)
+
 # ─── 1. Write emergency checkpoint with task narrative ───
 
+# The temp scripts below `from mnemos.store import ...`. Resolve an interpreter that OWNS the
+# toolchain — never bare `python3`, which imports it from source via sys.path and silently
+# succeeds on whatever Homebrew currently points that name at. (F-001, third form.)
+TOOLCHAIN_PY=""
+if [ -x ".venv/bin/python" ]; then
+    TOOLCHAIN_PY=".venv/bin/python"
+elif command -v mnemos >/dev/null 2>&1; then
+    TOOLCHAIN_PY="$(sed -n '1s/^#!//p' "$(command -v mnemos)" | awk '{print $1}')"
+fi
+
 MNEMOS_CMD=""
-if command -v mnemos &>/dev/null; then
+if [ -x ".venv/bin/mnemos" ]; then
+    MNEMOS_CMD=".venv/bin/mnemos"
+elif command -v mnemos &>/dev/null; then
     MNEMOS_CMD="mnemos"
-elif PYTHONPATH="${SCRIPT_DIR%/templates}/scripts" python3 -m mnemos --version &>/dev/null 2>&1; then
-    MNEMOS_CMD="PYTHONPATH=${SCRIPT_DIR%/templates}/scripts python3 -m mnemos"
 fi
 
 if [ -n "$MNEMOS_CMD" ]; then
     eval $MNEMOS_CMD checkpoint --force &>/dev/null
 fi
 
-# ─── 2. Write compaction marker for Layer 2 detection ───
+# ─── 2. Write compaction marker for Layer 2 detection + durable event record ───
+# The marker is consumed and deleted by the restore hook, leaving no trace.
+# compaction-log.jsonl is the durable record: it is what makes the Mnemos
+# compaction-recovery trial falsifiable. Without it, "never aided a recovery"
+# is unanswerable rather than false. See docs/observatory.md.
 
-python3 -c "
-import json, time, os
+HOOK_INPUT="$HOOK_INPUT" python3 -c "
+import json, time, os, sys
 os.makedirs('.mnemos', exist_ok=True)
+ts = time.time()
+
+# 'auto' = context filled up (the real event the recovery layer exists for).
+# 'manual' = a hand-run /compact, i.e. a TEST of that layer. Never let a test count
+# as evidence: P3 (the Mnemos trial verdict) must only ever see real compactions.
+trigger = 'unknown'
+try:
+    trigger = json.loads(os.environ.get('HOOK_INPUT') or '{}').get('trigger') or 'unknown'
+except ValueError:
+    pass
+
 with open('.mnemos/just-compacted', 'w') as f:
-    json.dump({'timestamp': time.time(), 'reason': 'pre_compact_hook'}, f)
+    json.dump({'timestamp': ts, 'reason': 'pre_compact_hook', 'trigger': trigger}, f)
+with open('.mnemos/compaction-log.jsonl', 'a') as f:
+    f.write(json.dumps({'ts': ts, 'event': 'compaction_fired', 'trigger': trigger}) + '\n')
 "
 
 # ─── 3. Build inline checkpoint content for summarizer ───
@@ -88,7 +138,7 @@ try:
 except Exception as e:
     print('Error: ' + str(e), file=sys.stderr)
 PYSCRIPT
-    CHECKPOINT_CONTENT=$(python3 "$TMPSCRIPT")
+    [ -n "$TOOLCHAIN_PY" ] && CHECKPOINT_CONTENT=$("$TOOLCHAIN_PY" "$TMPSCRIPT")
     rm -f "$TMPSCRIPT"
 fi
 
@@ -138,7 +188,7 @@ try:
 except Exception:
     pass
 PYSCRIPT
-    MNEMOS_PRIORITIES=$(python3 "$TMPSCRIPT2")
+    [ -n "$TOOLCHAIN_PY" ] && MNEMOS_PRIORITIES=$("$TOOLCHAIN_PY" "$TMPSCRIPT2")
     rm -f "$TMPSCRIPT2"
 fi
 

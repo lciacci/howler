@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+
+# ── Toolchain resolution: a PATH, never a NAME, and NO bare-python3 fallback. (F-001) ──
+# This block used to fall back to `python3 -m mnemos`. That fallback was the bug: with
+# PYTHONPATH=scripts, ANY interpreter imports mnemos straight from source — so it did not
+# fail, it silently SUCCEEDED on an unmanaged Python that Homebrew can re-point or delete.
+# The original F-001 failed silently (import error → no-op); this one *worked*, on the wrong
+# interpreter. A silent success is strictly harder to detect than a silent failure.
+# If the toolchain is unreachable, this hook now goes QUIET. tessera-watch P9 catches that.
 # Claude Code Stop hook: ingest the just-closed session transcript into
 # mnemos and compute per-session haziness.
 #
@@ -21,10 +29,10 @@ fi
 # Resolve mnemos the same way the sibling hooks do (console script first,
 # then `python3 -m mnemos`). Bail quietly if neither is available.
 MNEMOS_CMD=""
-if command -v mnemos >/dev/null 2>&1; then
+if [ -x ".venv/bin/mnemos" ]; then
+  MNEMOS_CMD=".venv/bin/mnemos"
+elif command -v mnemos >/dev/null 2>&1; then
   MNEMOS_CMD="mnemos"
-elif python3 -m mnemos --version >/dev/null 2>&1; then
-  MNEMOS_CMD="python3 -m mnemos"
 fi
 if [ -z "$MNEMOS_CMD" ]; then
   exit 0

@@ -1,10 +1,5 @@
 #!/bin/bash
-# Mnemos Post-Compaction Injection — FALLBACK Layer 2 of task restoration.
-#
-# NOTE: The PRIMARY re-injection point is now mnemos-compact-recovery.sh,
-# which fires via SessionStart "compact" matcher BEFORE the agent acts.
-# This script remains as a FALLBACK for edge cases where SessionStart
-# doesn't fire (e.g., older Claude Code versions, interrupted compaction).
+# Mnemos Post-Compaction Injection — Layer 3 (fallback) of task restoration.
 #
 # This is a PreToolUse hook with NO matcher (fires on ALL tool calls).
 # It detects when compaction just occurred and re-injects the full checkpoint.
@@ -14,9 +9,21 @@
 #
 # How it works:
 #   1. PreCompact hook writes ".mnemos/just-compacted" marker
-#   2. SessionStart "compact" consumes marker and injects checkpoint (primary)
-#   3. If marker still exists (fallback), this hook injects on first tool call
+#   2. SessionStart (unmatched, so it fires on source=compact too) runs
+#      mnemos-session-start.sh and prints the checkpoint — Layer 2, primary.
+#      It does NOT consume the marker.
+#   3. This hook consumes the marker and injects on the first tool call.
+#      Because Layer 2 left the marker, this normally fires too — a second,
+#      redundant injection. It is the ONLY layer that fires when the
+#      post-compaction turn is pure text with no tool call.
 #   4. Marker deletion is atomic (rename) to prevent parallel injection
+#   5. Either outcome appends to .mnemos/compaction-log.jsonl — the durable
+#      record. The marker itself is destroyed, so this log is the only
+#      evidence compaction ever fired.
+#
+# Corrected 2026-07-09: earlier headers named a "mnemos-compact-recovery.sh"
+# fired by a SessionStart "compact" matcher as the primary path. No such
+# script or matcher has ever existed. Layer 2 is mnemos-session-start.sh.
 #
 # Install: add to .claude/settings.json under hooks.PreToolUse (no matcher)
 
@@ -32,13 +39,23 @@ import json, time, os
 marker = '.mnemos/just-compacted'
 consumed = '.mnemos/just-compacted.consumed'
 
+def record(event):
+    # Durable counterpart to the compaction_fired line written by the
+    # PreCompact hook. Marker deletion is destructive; this outlives it.
+    try:
+        with open('.mnemos/compaction-log.jsonl', 'a') as f:
+            f.write(json.dumps({'ts': time.time(), 'event': event}) + '\n')
+    except Exception:
+        pass
+
 try:
     with open(marker) as f:
         data = json.load(f)
     age = time.time() - data.get('timestamp', 0)
     if age > 300:
-        # Stale marker (>5 min), just delete it
+        # Stale marker (>5 min): compaction fired but no restore ran in time.
         os.unlink(marker)
+        record('restore_missed_stale')
         print('stale')
     else:
         # Fresh marker — atomically consume it
@@ -47,6 +64,7 @@ try:
             os.unlink(consumed)
         except:
             pass
+        record('restore_injected')
         print('consumed')
 except FileNotFoundError:
     # Another hook already consumed it (parallel tool calls)
