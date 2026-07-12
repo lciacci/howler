@@ -138,7 +138,7 @@ try:
 except Exception as e:
     print('Error: ' + str(e), file=sys.stderr)
 PYSCRIPT
-    [ -n "$TOOLCHAIN_PY" ] && CHECKPOINT_CONTENT=$("$TOOLCHAIN_PY" "$TMPSCRIPT")
+    [ -n "$TOOLCHAIN_PY" ] && [ -x "$TOOLCHAIN_PY" ] && CHECKPOINT_CONTENT=$("$TOOLCHAIN_PY" "$TMPSCRIPT")
     rm -f "$TMPSCRIPT"
 fi
 
@@ -188,7 +188,7 @@ try:
 except Exception:
     pass
 PYSCRIPT
-    [ -n "$TOOLCHAIN_PY" ] && MNEMOS_PRIORITIES=$("$TOOLCHAIN_PY" "$TMPSCRIPT2")
+    [ -n "$TOOLCHAIN_PY" ] && [ -x "$TOOLCHAIN_PY" ] && MNEMOS_PRIORITIES=$("$TOOLCHAIN_PY" "$TMPSCRIPT2")
     rm -f "$TMPSCRIPT2"
 fi
 

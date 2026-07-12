@@ -19,7 +19,6 @@
       "Bash(head *)",
       "Bash(wc *)",
       "Bash(mnemos *)",
-      "Bash(python -m mnemos *)",
       "Bash(python3 scripts/gate/emit.py *)"
     ],
     "deny": [
