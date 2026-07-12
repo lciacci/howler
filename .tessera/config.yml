@@ -1,0 +1,16 @@
+# Tessera tuning configuration — howler.
+#
+# COMMITTED, not gitignored: a test command that vanishes on a fresh clone is useless to the
+# unsupervised agent it exists for. Keep secrets out of this file.
+#
+# ONLY keys that something ACTUALLY READS belong here. A knob that silently does nothing is
+# worse than no knob — it grants false assurance.
+
+# --- toolchain (read by bin/tessera-test) ---
+#
+# JVM unit tests only (app/src/test). Does NOT run app/src/androidTest — the instrumented
+# suite needs a device or emulator attached, so it is not a command an agent can assume will
+# work unattended. If you need it: `./gradlew connectedAndroidTest`, with a device up.
+#
+# Verified 2026-07-11: BUILD SUCCESSFUL; results in app/build/test-results/testDebugUnitTest.
+test: ./gradlew test
