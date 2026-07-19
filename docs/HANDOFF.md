@@ -4,12 +4,17 @@ How to pick this repo up cold. Pair with `CLAUDE.md` (conventions) and
 `FEATURES.md` (what's built). Git is the source of truth; everything below is the
 stuff git alone won't tell you.
 
-## Status (2026-07-05)
+## Status (2026-07-19)
 
-**In closed testing on Google Play — 14-day clock running.** 12 testers enrolled;
-the 14-day closed-testing period (Play's gate before you can apply for production
-access) is counting down. Opt-in URL in Play Console → Testing → Closed testing.
-Nothing to ship on Android until the clock clears — then apply for production.
+**Android: 14-day closed test cleared, now in Google production review.** 12 testers,
+zero feedback in. Promotion applied for; Google's production eval runs up to ~1 week.
+Nothing to do but wait for it to clear.
+
+**iOS: UI ported and committed — only the real-device pass remains.** The held CRT/DSEG7
+SwiftUI front end (ADR step 3) is done (`0c69cd2`); see the iOS section + device-pass
+checklist below. Apple Developer Program enrollment applied + paid (individual), may take
+up to 48h to process — gates App Store distribution only, **not** the device pass (free
+personal-team signing covers that).
 
 **1.0.2 (versionCode 3) uploaded — in-app help reachable.** The first-run dialog
 (accuracy + calibration guidance, LEARN MORE link) was only reachable once, on first launch —
@@ -132,13 +137,47 @@ is per-device so a borrowed-iPad number is discarded anyway, and the calibration
 already unit-tested headless (`ios/checks/calibration_check.swift`). Real calibration happens on
 the final iPhone through the real UI, later.
 
-**iOS status: audio fully derisked. Only UI remains — and it's held.**
+**iOS status: audio derisked, UI ported. Only the real-device pass remains.**
 
-- 🅗 **Held:** the real CRT/DSEG7 SwiftUI UI + the calibration capture dialog (ADR step 3) until
-  Android closed-testing feedback lands, so it's built once against a validated design. This is
-  the last iOS work item; nothing else is open.
+- ✅ **UI ported (`0c69cd2`, ADR step 3).** The real CRT/DSEG7 SwiftUI front end + both dialogs
+  (first-run notice, manual-calibration capture) — a layer-for-layer port of Android
+  `MainActivity.kt` over the shared `MeterEngine`. `ContentView.swift` (meter screen, reactive
+  head+glow, DSEG7 readout, A/C/Z + FAST/SLOW segmented, OVER, MAX/MIN/Leq, scanlines,
+  mic-permission + input-unavailable states); `HowlerColors.swift` (Phosphor palette mirrors
+  `ui/theme/Color.kt`); DSEG7 ttf registered at launch (generated Info.plist can't carry
+  `UIAppFonts`); `howler_head` imageset. Deployment target lowered 26.5→17.0. Verified: type-check
+  + build clean, renders live in the simulator (readout, head silhouette, palette, dialogs all
+  correct). Reviewed — 2 low findings fixed (mic-revoke stop, font-register assert).
+- ⏳ **Real-device pass — the one remaining iOS item.** See the checklist below. Enrollment-
+  independent (free personal-team signing). ~30–60 min, one wired session.
 
 Parked out-of-v1 extras (unchanged): history graph, dose, Ln percentiles, octave bands, export.
+
+### iOS device-pass checklist (do when the iPhone is on hand)
+
+The last iOS work item. Free Apple-ID signing is already configured
+(`DEVELOPMENT_TEAM=9RS8LQS3AK`, `NSMicrophoneUsageDescription` set) — **paid enrollment is not
+required for this pass**, only for the later TestFlight/submission.
+
+Have ready: iPhone + cable (unlocked), BAFX reference meter, a steady source near 1 kHz
+(tone app), this Mac.
+
+1. Plug in → trust the Mac on the phone → Settings › General › VPN & Device Management: trust the
+   dev cert.
+2. Open `ios/HowlerMeter/HowlerMeter.xcodeproj`, select the device, Run → installs + launches.
+3. **Live-audio confirm:** meter tracks the mic and **holds steady under a constant source** (no
+   AGC drift) → `.measurement`/unprocessed is honest. (Already proven on an iPad; this re-confirms
+   on the target hardware — the simulator mic is silent on this machine, so it never ran live here.)
+4. **Calibrate:** steady ~1 kHz source, read the BAFX, tap the bottom caption → enter the reading
+   → SAVE. Verify the readout tracks the reference across 2–3 levels. (Offset is per-device; this
+   is a sanity check of the math, not a shipped number — each user calibrates their own.)
+5. **Reactive glow:** needs a loud source (>~55 dB) to light the amber halo — confirm it swells
+   with level.
+6. Grab App Store screenshots while live.
+
+**Before distribution (not the device pass):** confirm `DEVELOPMENT_TEAM=9RS8LQS3AK` is the *paid*
+team — an individual paid enrollment can issue a different team ID than the free personal team.
+Swap it before TestFlight + submit if so.
 
 ## Toolchain
 

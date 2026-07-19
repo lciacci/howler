@@ -59,10 +59,14 @@ Expected: `PASS: meter_core.h ...` and `PASS: calibration model + store`.
   (`splFromDbfs`, `saveManualCalibration`, `clearCalibration`). Mirrors Android
   `Calibration.kt`/`CalibrationStore.kt`; tier-1 device-sensitivity omitted (no iOS API, and
   Android doesn't auto-trust it either). Capture UI deferred to step 3.
+- ✅ **UI ported (ADR step 3, `0c69cd2`):** the CRT/DSEG7 SwiftUI front end + first-run and
+  manual-calibration dialogs — a layer-for-layer port of Android `MainActivity.kt` over
+  `MeterEngine`. `ContentView.swift` + `HowlerColors.swift` (Phosphor palette); DSEG7 ttf
+  registered at launch; `howler_head` imageset. Deployment target 17.0. Builds + renders live in
+  the simulator; reviewed (mic-revoke stop + font-register assert fixed).
 - ⚠️ **iOS Simulator mic delivers silence on this machine** (`peak=0.0`) — a simulator
   audio-input quirk, not the app (the identical path ran live in the spike). Live-audio
   re-confirmation is folded into the real-device pass.
-- ⏳ **Real-device pass** — hardware `.measurement`/unprocessed parity + live-audio confirm +
-  calibrate vs a reference (BAFX). Needs a wired iPhone + free Apple ID signing.
-- 🅗 **Held:** the real CRT/DSEG7 SwiftUI front end + calibration capture dialog (ADR step 3) —
-  until Android closed-testing feedback lands, so it's built once against a validated design.
+- ⏳ **Real-device pass — the only remaining item.** Hardware `.measurement`/unprocessed parity +
+  live-audio confirm + calibrate vs a reference (BAFX). Needs a wired iPhone + free Apple ID
+  signing (already configured). Full checklist in `../docs/HANDOFF.md`.
