@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import UIKit
 
 /// Drives the shared C++ meter DSP (`meter_core.h`, via `meter_bridge.h`) from an
 /// AVAudioEngine input tap — the iOS analog of the Android Oboe input callback.
@@ -8,10 +9,26 @@ import Combine
 final class MeterEngine: ObservableObject {
     @Published private(set) var levelDbfs: Float = -160
     @Published private(set) var maxDbfs: Float = -160
+    @Published private(set) var maxClipped = false
     @Published private(set) var minDbfs: Float = 200
     @Published private(set) var leqDbfs: Float = -160
     @Published private(set) var over = false
     @Published private(set) var running = false
+
+    /// UI controls — mirror the Android `weighting`/`fast` state. Changing either
+    /// pushes to the DSP and resets the since-reset stats (units changed), same as
+    /// Android's `nativeSetWeighting`/`nativeSetFast` + `nativeResetStats` effects.
+    @Published var weighting: Int32 = 1 {           // 0=Z, 1=A (default), 2=C
+        didSet { guard weighting != oldValue else { return }
+            meter_set_weighting(meter, weighting); resetStats() }
+    }
+    @Published var fast = true {                    // Fast (125 ms) default
+        didSet { guard fast != oldValue else { return }
+            meter_set_fast(meter, fast); resetStats() }
+    }
+
+    /// Mic authorization for the record session. nil = not asked yet.
+    @Published private(set) var micGranted: Bool? = nil
 
     /// Current dBFS→SPL mapping (tier-2 manual or uncalibrated). The DSP stays
     /// uncalibrated; calibration is applied at display, mirroring Android.
@@ -59,14 +76,17 @@ final class MeterEngine: ObservableObject {
             meter_process(meter, ch[0], Int32(buf.frameLength))
         }
         try engine.start()
-        meter_set_weighting(meter, 1)  // A, matching the Android default
-        meter_set_fast(meter, true)
+        meter_set_weighting(meter, weighting)  // current UI selection (A by default)
+        meter_set_fast(meter, fast)
 
         // Poll the atomics at ~20 Hz for the UI, same as Android reads over JNI.
         poll = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             self?.pull()
         }
         running = true
+        // Watching a meter, not tapping it — hold the screen awake while live
+        // (Android's FLAG_KEEP_SCREEN_ON). Released on stop.
+        UIApplication.shared.isIdleTimerDisabled = true
     }
 
     func stop() {
@@ -75,16 +95,27 @@ final class MeterEngine: ObservableObject {
         engine.stop()
         meter_on_stopped(meter)
         running = false
+        UIApplication.shared.isIdleTimerDisabled = false
         pull()
     }
 
-    func setWeighting(_ w: Int32) { meter_set_weighting(meter, w) }  // 0=Z, 1=A, 2=C
-    func setFast(_ fast: Bool) { meter_set_fast(meter, fast) }
-    func resetStats() { meter_reset_stats(meter) }
+    /// Ask for mic access; updates `micGranted`. Idempotent — the system only
+    /// prompts once, later calls just report the standing decision.
+    func requestPermission() {
+        AVAudioApplication.requestRecordPermission { [weak self] granted in
+            DispatchQueue.main.async { self?.micGranted = granted }
+        }
+    }
+
+    func resetStats() {
+        meter_reset_stats(meter)
+        maxDbfs = -160; minDbfs = 200; leqDbfs = -160; maxClipped = false
+    }
 
     private func pull() {
         levelDbfs = meter_level_dbfs(meter)
         maxDbfs = meter_max_dbfs(meter)
+        maxClipped = meter_max_clipped(meter)
         minDbfs = meter_min_dbfs(meter)
         leqDbfs = meter_leq_dbfs(meter)
         over = meter_over_range(meter)
