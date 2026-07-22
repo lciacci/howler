@@ -1,7 +1,7 @@
 # Howler — Tessera project profile
 profile: standard
 # frozen: pinned local hook copies, churn-immune while shipping to store (ADR-0004)
-hook_distro: frozen
+hook_distro: global
 profile_history: []
 extensions_added: []
 extensions_removed: []
