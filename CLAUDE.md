@@ -55,6 +55,44 @@ Howler exists partly to find what's wrong/missing in Tessera. When the framework
 - Framework-level fixes happen in `../tessera`, not here (don't touch `../tessera` unless asked).
   Stage the finding here, transfer when next working in tessera.
 
+## Pending harness back-fill — the spend guard (OPEN as of 2026-07-24)
+
+**Howler is the last repo in the fleet without Tessera's spend guard.** This is a deliberate
+defer, not an oversight, and it can only be closed *from a howler session* — which is why it is
+written here rather than left on Tessera's backlog, where it sat unmoved for two sessions
+because nothing in a Tessera session can do it.
+
+**Why it was deferred.** The guard adds a `PreToolUse(Bash)` hook that **denies Bash by
+default** unless a spend envelope has been granted. The only way to learn whether that blocks a
+real `./gradlew` build, an `$ADB install`, or a Play Store upload is to be in howler running
+those commands. Doing it blind, mid-ship, risks bricking the build loop.
+
+**What is missing** (9 files + 2 hook wirings, verified 2026-07-24):
+
+```
+.claude/scripts/tessera-spend-backstop.sh   scripts/spend/event.py
+.claude/scripts/tessera-spend-guard.sh      scripts/spend/guard.py
+scripts/spend/authorize.py                  scripts/spend/test_backstop.py
+scripts/spend/backstop.py                   scripts/spend/test_guard.py
+scripts/spend/conftest.py
++ PreToolUse → tessera-spend-guard.sh    + Stop → tessera-spend-backstop.sh
+```
+
+**How to close it.** With `../tessera` checked out:
+
+```sh
+tessera-sync-harness ~/Claude/howler            # dry-run first — it only ever ADDS
+tessera-sync-harness ~/Claude/howler --apply    # no --exclude spend this time
+```
+
+Then, before the first build, confirm the guard does not block the dev loop. Cost-*reducing*
+commands are never blocked by design, but a build is not one. `tessera-authorize grant --usd N
+--ttl 4h --note "..."` opens an envelope. If it blocks something it should not, that is a
+finding for `docs/FINDINGS.md`, not a reason to delete the hook.
+
+**Do not need `../tessera` to know the task exists** — that is the point of this section. The
+file list above is the fallback if the framework is not on this machine.
+
 ## Hook lifecycle (Mnemos)
 
 The hooks in `.claude/settings.json` invoke scripts in `.claude/scripts/`:
